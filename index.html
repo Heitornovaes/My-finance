@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Finance • Organizado</title>
+    
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <div id="login-screen" class="login-container">
+        <div class="login-box">
+            <div class="logo-icon"><i class="fa-solid fa-rocket"></i></div>
+            <h1 class="logo-text" style="font-size: 2rem; margin-bottom: 5px;">My Finance</h1>
+            <p class="subtitle" style="margin-bottom: 30px;">Decole suas finanças.</p>
+            
+            <div class="input-group">
+                <input type="email" id="email" placeholder="seu@email.com" style="background:#f8fafc;">
+            </div>
+            <div class="input-group">
+                <input type="password" id="password" placeholder="Sua senha" style="background:#f8fafc;">
+            </div>
+            
+            <button id="btnLogin" class="btn-submit" style="background: linear-gradient(90deg, #0ea5e9, #2563eb); border:none;">ACESSAR PAINEL</button>
+            <button id="btnRegister" class="btn-text" style="font-size:0.8rem; margin-top:20px">Não tem conta? Cadastre-se</button>
+        </div>
+    </div>
+
+    <div id="app-layout" class="app-layout hidden">
+        
+        <aside class="sidebar">
+            <div class="brand"><i class="fa-solid fa-wallet"></i> My Finance</div>
+            <nav>
+                <div class="nav-item active" onclick="showSection('dashboard')"><i class="fa-solid fa-chart-pie"></i> Visão Geral</div>
+                <div class="nav-item" onclick="showSection('transactions')"><i class="fa-solid fa-list"></i> Extrato</div>
+                <div class="nav-item" onclick="showSection('cards')"><i class="fa-solid fa-credit-card"></i> Cartões</div>
+                <div class="nav-item" onclick="showSection('investments')"><i class="fa-solid fa-chart-line"></i> Investimentos</div>
+                <div class="nav-item" onclick="showSection('categories')"><i class="fa-solid fa-tags"></i> Categorias</div>
+            </nav>
+            <div class="user-area">
+                <small id="user-email">Carregando...</small>
+                <button id="btnLogout">Sair</button>
+            </div>
+        </aside>
+
+        <main class="content">
+            <header class="top-bar">
+                <h2 id="page-title">Visão Geral</h2>
+                <button id="global-btn" class="btn-primary" onclick="openModal()"><i class="fa-solid fa-plus"></i> Transação</button>
+            </header>
+
+         <section id="view-dashboard" class="view-section">
+    
+    <div class="month-navigator">
+        <button onclick="changeMonth(-1)"><i class="fa-solid fa-chevron-left"></i></button>
+        <span id="current-month-display">MÊS ATUAL</span>
+        <button onclick="changeMonth(1)"><i class="fa-solid fa-chevron-right"></i></button>
+    </div>
+
+    <div class="summary-cards">
+        <div class="card summary-card card-blue">
+            <i class="fa-solid fa-wallet icon-bg"></i>
+            <small>Saldo Total</small>
+            <h3 id="display-total">R$ 0,00</h3>
+        </div>
+        <div class="card summary-card card-green">
+            <i class="fa-solid fa-arrow-trend-up icon-bg"></i>
+            <small>Receitas</small>
+            <h3 id="display-income">R$ 0,00</h3>
+        </div>
+        <div class="card summary-card card-red">
+            <i class="fa-solid fa-arrow-trend-down icon-bg"></i>
+            <small>Despesas</small>
+            <h3 id="display-expense">R$ 0,00</h3>
+        </div>
+    </div>
+
+    <div class="charts-row">
+        <div class="chart-box">
+            <h4><i class="fa-solid fa-chart-pie"></i> Despesas do Mês</h4>
+            <div class="canvas-container">
+                <canvas id="expenseChart"></canvas>
+            </div>
+        </div>
+
+        <div class="chart-box">
+            <h4><i class="fa-solid fa-chart-line"></i> Evolução Investimentos</h4>
+            <div class="canvas-container">
+                <canvas id="investmentChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <div class="recent-transactions-full">
+        <h4 style="margin-bottom:20px; color:var(--text-main)">Últimas Movimentações</h4>
+        <ul id="transactions-preview"></ul>
+    </div>
+
+</section>
+
+           <section id="view-transactions" class="view-section hidden">
+    
+    <div class="month-navigator" style="margin-bottom: 20px;">
+        <button onclick="changeMonth(-1)"><i class="fa-solid fa-chevron-left"></i></button>
+        <span id="current-month-display-extrato" style="text-transform:uppercase; font-weight:600; min-width:140px; text-align:center">MÊS ATUAL</span>
+        <button onclick="changeMonth(1)"><i class="fa-solid fa-chevron-right"></i></button>
+    </div>
+
+    <div class="card">
+        <ul id="transactions-full"></ul>
+    </div>
+</section>
+
+           <section id="view-cards" class="view-section hidden">
+    
+    <div class="month-navigator">
+        <button onclick="changeMonth(-1)"><i class="fa-solid fa-chevron-left"></i></button>
+        <span id="current-month-display-cards" style="text-transform:uppercase; font-weight:600; min-width:140px; text-align:center">MÊS ATUAL</span>
+        <button onclick="changeMonth(1)"><i class="fa-solid fa-chevron-right"></i></button>
+    </div>
+
+    <div class="header-action" style="margin-top: 20px;">
+        <button class="btn-primary" onclick="openCardModal()">+ Cartão</button>
+    </div>
+    
+    <div id="cards-grid" class="cards-grid"></div>
+</section>
+
+          <section id="view-investments" class="view-section hidden">
+        <div class="month-navigator" style="margin-bottom: 20px;">
+        <button onclick="changeMonth(-1)"><i class="fa-solid fa-chevron-left"></i></button>
+        <span id="current-month-display-invest" style="text-transform:uppercase; font-weight:600; min-width:140px; text-align:center">MÊS ATUAL</span>
+        <button onclick="changeMonth(1)"><i class="fa-solid fa-chevron-right"></i></button>
+    </div>
+
+    <div class="header-action">
+        <button class="btn-primary" onclick="openInvestmentModal()">+ Novo Aporte</button>
+    </div>
+        
+        <div class="invest-dashboard">
+            <div class="invest-summary-card">
+                <i class="fa-solid fa-sack-dollar icon-bg" style="position:absolute; right:-20px; bottom:-20px; font-size:8rem; opacity:0.2;"></i>
+                <small style="font-size: 0.9rem; opacity: 0.9; text-transform: uppercase; letter-spacing: 1px;">Patrimônio Total</small>
+                <h3 id="total-invested" style="font-size: 2.8rem; margin-top: 10px;">R$ 0,00</h3>
+                <p style="opacity: 0.8; margin-top: 5px; font-size: 0.9rem;">Rendendo acima da inflação 🚀</p>
+            </div>
+
+            <div class="invest-chart-wrapper">
+                <h4 style="width:100%; text-align:left; margin-bottom:10px; color:var(--text-muted); font-size:0.9rem"><i class="fa-solid fa-chart-pie"></i> Alocação da Carteira</h4>
+                <div style="flex:1; width:100%; position:relative;">
+                    <canvas id="allocationChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <h4 style="margin-bottom: 20px; color: var(--text-main);">Meus Ativos</h4>
+        <div id="investments-grid" class="cards-grid"></div>
+    </section>
+
+            <section id="view-categories" class="view-section hidden">
+                <div class="header-action"><button class="btn-primary" onclick="openCategoryModal()">+ Categoria</button></div>
+                <div id="categories-list" class="cards-grid"></div>
+            </section>
+        </main>
+    </div>
+
+    <div id="modal-overlay" class="modal-overlay hidden">
+        <div class="modal">
+            <div class="modal-header"><h3>Transação</h3><button onclick="closeModal()">✖</button></div>
+            <form id="form">
+                <div class="form-row"><input id="description" placeholder="Descrição" required><input id="amount" placeholder="R$ 0,00" required></div>
+                <div class="form-row">
+                    <select id="type"><option value="expense">Despesa</option><option value="income">Receita</option></select>
+                    <input type="date" id="date" required>
+                </div>
+                <div class="form-row"><select id="category" required></select><select id="account" required></select></div>
+                
+                <div class="form-row"><select id="payment_method" onchange="toggleCardInput()"><option value="cash">Dinheiro</option><option value="credit_card">Cartão de Crédito</option></select></div>
+                
+                <div id="credit_card_options" class="hidden box-options">
+                    <select id="credit_card_select"></select>
+                    <div class="check-group">
+                        <label><input type="checkbox" id="is_installment" onchange="toggleInstallments()"> Parcelado?</label>
+                        <input type="number" id="installments_count" placeholder="Qtd" class="hidden" min="2" style="width: 80px;">
+                    </div>
+                </div>
+
+                <div class="form-row mt-10">
+                    <label class="check-label"><input type="checkbox" id="is_fixed"> Fixa (Mensal)</label>
+                    <label class="check-label ml-15"><input type="checkbox" id="is_paid" checked> Já Pago</label>
+                </div>
+                <button type="submit" class="btn-submit">Salvar</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="modal-card-overlay" class="modal-overlay hidden">
+        <div class="modal">
+            <div class="modal-header"><h3>Cartão</h3><button onclick="closeCardModal()">✖</button></div>
+            <form id="form-card">
+                <input id="card_name" placeholder="Nome" required>
+                <input id="card_limit" placeholder="Limite" required>
+                <div class="form-row"><input id="card_close" placeholder="Fechamento (dia)" required><input id="card_due" placeholder="Vencimento (dia)" required></div>
+                <button type="submit" class="btn-submit">Salvar</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="modal-investment-overlay" class="modal-overlay hidden">
+        <div class="modal">
+            <div class="modal-header"><h3>Investimento</h3><button onclick="closeInvestmentModal()">✖</button></div>
+            <form id="form-investment">
+                <input id="inv_name" placeholder="Nome" required>
+                <select id="inv_type"><option value="Renda Fixa">Renda Fixa</option><option value="Ações">Ações</option><option value="Cripto">Criptomoedas</option></select>
+                <input id="inv_balance" placeholder="Valor Atual" required>
+                <button type="submit" class="btn-submit">Salvar</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="modal-category-overlay" class="modal-overlay hidden">
+        <div class="modal">
+            <div class="modal-header"><h3>Categoria</h3><button onclick="closeCategoryModal()">✖</button></div>
+            <form id="form-category">
+                <input id="cat_name" placeholder="Nome" required>
+                <select id="cat_icon"><option value="fa-tag">Geral</option><option value="fa-cart-shopping">Mercado</option><option value="fa-car">Carro</option><option value="fa-house">Casa</option></select>
+                <button type="submit" class="btn-submit">Salvar</button>
+            </form>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
