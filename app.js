@@ -3,75 +3,121 @@ const supabaseUrl = 'https://dwuaiqfvseridxcadduu.supabase.co'
 const supabaseKey = 'sb_publishable_HX71d-G-UBaRM16Vz0fH4A_ZoF44IEE' 
 const supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey)
 
+// Globais
 let currentDashboardDate = new Date()
-let globalTransactions=[], globalCards=[], globalCategories=[], globalInvestments=[]
-let editingTransactionId=null, editingCardId=null, editingCategoryId=null, editingInvestmentId=null
-let myChart=null, investmentChart=null, allocationChart=null
-let isLoading = false // TRAVA CONTRA DUPLO CLIQUE
+let globalTransactions=[], globalCards=[], globalCategories=[], globalInvestments=[], globalAccounts=[]
+let editingTransactionId=null, editingCardId=null, editingCategoryId=null, editingInvestmentId=null, editingAccountId=null
+let myChart=null, investmentChart=null
+let isLoading = false 
+let currentFilterType = 'all'; 
 
-// ================= LOGIN & AUTH =================
+// ==========================================
+// 1. SISTEMA DE MODAIS (LIMPO E SIMPLES)
+// ==========================================
+
+// Função Genérica para ABRIR qualquer modal
+window.showModal = function(id) {
+    const el = document.getElementById(id);
+    if(el) {
+        el.classList.remove('hidden'); // O CSS cuida do resto (flex, z-index, animação)
+    } else {
+        console.error(`Modal não encontrado: ${id}`);
+    }
+}
+
+// Função Genérica para FECHAR qualquer modal
+window.hideModal = function(id) {
+    const el = document.getElementById(id);
+    if(el) {
+        el.classList.add('hidden');
+    }
+}
+
+// Função Auxiliar: Formatar Números (Evitar NaN)
+const safeNumber = (value) => {
+    if (value === null || value === undefined) return 0;
+    if (typeof value === 'number') return value;
+    let clean = value.toString().replace(/\./g, '').replace(',', '.').replace(/[^0-9.-]/g, '');
+    return parseFloat(clean) || 0;
+}
+
+// ==========================================
+// 2. AUTENTICAÇÃO
+// ==========================================
 async function checkUser() {
     const { data: { session } } = await supabaseClient.auth.getSession()
+
     if (session) {
         document.getElementById('login-screen').classList.add('hidden')
         document.getElementById('app-layout').classList.remove('hidden')
+
         document.getElementById('user-email').innerText = session.user.email
-        loadDropdowns(session.user.id)
-        updateDateDisplay()
-        showSection('dashboard')
-        // Inicia robô sem travar a tela
-        processFixedExpenses(session.user.id)
+        updateGreeting(session.user.email);
+        updateDateDisplay();
+
+        await loadDropdowns(session.user.id);
+        
+        showSection('dashboard');
+        
+        updateAccountsWidget(session.user.id);
+        fetchGoals(session.user.id);
+        processFixedExpenses(session.user.id); 
+
     } else {
         document.getElementById('login-screen').classList.remove('hidden')
         document.getElementById('app-layout').classList.add('hidden')
     }
 }
-document.getElementById('btnLogin').addEventListener('click', async () => {
-    const email=document.getElementById('email').value, password=document.getElementById('password').value
-    const {error}=await supabaseClient.auth.signInWithPassword({email,password})
-    if(error) alert(error.message); else checkUser()
-})
-document.getElementById('btnRegister').addEventListener('click', async () => {
-    const email=document.getElementById('email').value, password=document.getElementById('password').value
-    const {error}=await supabaseClient.auth.signUp({email,password})
-    if(error) alert(error.message); else alert('Verifique seu email!')
-})
-document.getElementById('btnLogout').addEventListener('click', async () => { await supabaseClient.auth.signOut(); location.reload() })
 
-// ================= NAVEGAÇÃO SEGURA =================
+async function login() {
+    const email = document.getElementById('email').value
+    const password = document.getElementById('password').value
+    if(!email || !password) return alert("Preencha todos os campos!")
+    
+    const btn = document.getElementById('btnLogin');
+    const oldText = btn.innerText;
+    btn.innerText = "Entrando...";
+    btn.disabled = true;
+    
+    const { error } = await supabaseClient.auth.signInWithPassword({ email, password })
+    
+    if (error) {
+        alert("Erro: " + error.message);
+        btn.innerText = oldText;
+        btn.disabled = false;
+    } else {
+        checkUser();
+    }
+}
+
+async function logout() {
+    await supabaseClient.auth.signOut()
+    location.reload()
+}
+
+document.getElementById('btnLogin').addEventListener('click', login);
+document.getElementById('btnLogout').addEventListener('click', logout);
+
+// ==========================================
+// 3. NAVEGAÇÃO
+// ==========================================
 window.showSection = function(id) {
     document.querySelectorAll('.view-section').forEach(el => el.classList.add('hidden'))
     document.getElementById('view-'+id).classList.remove('hidden')
-    document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'))
     
+    document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'))
     const activeBtn = document.querySelector(`.nav-item[onclick="showSection('${id}')"]`)
     if(activeBtn) activeBtn.classList.add('active')
-    
-    const btn = document.getElementById('global-btn')
-    if(id === 'dashboard' || id === 'transactions') btn.classList.remove('hidden'); else btn.classList.add('hidden')
-
-    const titles = {'dashboard':'Visão Geral','transactions':'Extrato','cards':'Meus Cartões','investments':'Investimentos','categories':'Categorias'}
-    document.getElementById('page-title').innerText = titles[id] || 'My Finance'
     
     refreshCurrentView()
 }
 
 function refreshCurrentView() {
-    if(!document.getElementById('view-transactions').classList.contains('hidden')) {
-        fetchTransactions()
-    }
-    else if(!document.getElementById('view-dashboard').classList.contains('hidden')) {
-        fetchTransactions()
-    }
-    else if(!document.getElementById('view-cards').classList.contains('hidden')) {
-        fetchCards()
-    }
-    else if(!document.getElementById('view-investments').classList.contains('hidden')) {
-        fetchInvestments()
-    }
-    else if(!document.getElementById('view-categories').classList.contains('hidden')) {
-        fetchCategories() // <--- AGORA SIM! ELE VAI CARREGAR AS CATEGORIAS
-    }
+    if(!document.getElementById('view-transactions').classList.contains('hidden')) fetchTransactions()
+    else if(!document.getElementById('view-dashboard').classList.contains('hidden')) fetchTransactions()
+    else if(!document.getElementById('view-cards').classList.contains('hidden')) fetchCards()
+    else if(!document.getElementById('view-investments').classList.contains('hidden')) fetchInvestments()
+    else if(!document.getElementById('view-categories').classList.contains('hidden')) fetchCategories()
 }
 
 function updateDateDisplay() {
@@ -80,11 +126,9 @@ function updateDateDisplay() {
     ids.forEach(id => { const el = document.getElementById(id); if(el) el.innerText = text; })
 }
 
-// MUDANÇA DE MÊS COM PROTEÇÃO
 window.changeMonth = async function(step) {
-    if(isLoading) return; // Impede clique duplo rápido
+    if(isLoading) return; 
     isLoading = true;
-
     currentDashboardDate.setMonth(currentDashboardDate.getMonth() + step)
     updateDateDisplay()
     
@@ -92,328 +136,874 @@ window.changeMonth = async function(step) {
     if(user) await processFixedExpenses(user.id)
 
     await refreshCurrentView()
-    
-    setTimeout(() => { isLoading = false }, 300); // Destrava após 300ms
+    setTimeout(() => { isLoading = false }, 300); 
 }
 
-// ================= INVESTIMENTOS (CORRIGIDO) =================
-async function fetchInvestments() {
-    console.log("🔄 Buscando Investimentos para:", currentDashboardDate.toLocaleDateString());
-    const { data: { user } } = await supabaseClient.auth.getUser()
-    
-    // DATA LIMITE (Fim do mês visualizado)
-    const year = currentDashboardDate.getFullYear()
-    const month = currentDashboardDate.getMonth() + 1
-    const lastDay = new Date(year, month, 0).getDate()
-    const compareString = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
-    
-    // 1. Busca Contas
-    const { data: accs } = await supabaseClient.from('accounts').select('*').eq('user_id', user.id).eq('type', 'investment')
-    
-    // 2. Busca Histórico Total (Ordenado)
-    const { data: history } = await supabaseClient.from('asset_history').select('*').eq('user_id', user.id).order('reference_date', { ascending: false })
-    const safeHistory = history || [] 
+function updateGreeting(userEmail) {
+    const hour = new Date().getHours()
+    const greeting = hour < 12 ? '👋 Bom dia,' : (hour < 18 ? '👋 Boa tarde,' : '👋 Boa noite,');
+    const el = document.getElementById('welcome-greeting');
+    if(el) el.innerText = greeting;
 
-    const grid = document.getElementById('investments-grid')
-    if(!grid) return
-    grid.innerHTML = ''
-    globalInvestments = accs // Guarda referência das contas
-    
-    let total = 0
-    let allocation = {}
-
-    accs.forEach(acc => {
-        // LÓGICA DE HISTÓRICO
-        const validEntry = safeHistory.find(h => h.account_id == acc.id && h.reference_date <= compareString)
-        
-        let currentBalance = 0
-        if (validEntry) {
-            currentBalance = Number(validEntry.amount) // Usa histórico encontrado
-        } else {
-            // Se estamos no futuro ou presente, usa o saldo atual. Se passado sem histórico, 0.
-            const todayStr = new Date().toISOString().split('T')[0]
-            if (compareString >= todayStr) currentBalance = Number(acc.initial_balance)
-            else currentBalance = 0 
-        }
-        
-        total += currentBalance
-
-        // Visual
-        let type = "Geral"
-        if(acc.name.includes('|')) type = acc.name.split('|')[0].trim()
-        if(!allocation[type]) allocation[type] = 0
-        allocation[type] += currentBalance
-
-        let icon = 'fa-chart-pie'
-        if(type === 'Cripto') icon = 'fa-bitcoin'
-        if(type === 'Ações') icon = 'fa-arrow-trend-up'
-        if(type === 'Renda Fixa') icon = 'fa-sack-dollar'
-        const cleanName = acc.name.includes('|') ? acc.name.split('|')[1].trim() : acc.name
-
-        // --- CORREÇÃO DO BOTÃO EDITAR ---
-        // Agora passamos 'currentBalance' e 'cleanName' para a função de editar
-        grid.innerHTML += `
-            <div class="invest-card">
-                <div style="display:flex; justify-content:space-between">
-                    <div style="font-size:1.5rem; color:var(--primary); background:#e0f2fe; width:45px; height:45px; display:flex; align-items:center; justify-content:center; border-radius:10px"><i class="fa-solid ${icon}"></i></div>
-                    <div class="action-buttons">
-                        <button class="action-btn" onclick="prepareEditInv(${acc.id}, ${currentBalance}, '${cleanName}')"><i class="fa-solid fa-pen"></i></button>
-                        <button class="action-btn delete" onclick="removeInv(${acc.id})"><i class="fa-solid fa-trash"></i></button>
-                    </div>
-                </div>
-                <div>
-                    <h2 style="color:var(--text-main); font-size:1.4rem">R$ ${currentBalance.toLocaleString('pt-br',{minimumFractionDigits:2})}</h2>
-                    <small style="color:var(--text-muted); font-size:0.85rem">${cleanName}</small>
-                </div>
-            </div>
-        `
-    })
-    
-    if(document.getElementById('total-invested')) document.getElementById('total-invested').innerText = `R$ ${total.toLocaleString('pt-br',{minimumFractionDigits:2})}`
-    if(typeof renderAllocationChart === 'function') renderAllocationChart(allocation)
-}
-
-// JANELA DE EDITAR (AGORA RECEBE O VALOR DO MÊS CORRETO)
-window.prepareEditInv = (id, val, name) => {
-    editingInvestmentId = id;
-    const acc = globalInvestments.find(x => x.id == id);
-    
-    let type = 'Renda Fixa'
-    if(acc.name.includes('|')) type = acc.name.split('|')[0].trim();
-
-    setVal('inv_name', name); // Nome limpo
-    setVal('inv_type', type);
-    setVal('inv_balance', val.toLocaleString('pt-br', {minimumFractionDigits: 2})); // Valor visualizado (Histórico)
-    
-    open('modal-investment-overlay')
-}
-
-// SALVAR INVESTIMENTO (MANTÉM O TIPO CORRETO)
-document.getElementById('form-investment').addEventListener('submit', async(e) => {
-    e.preventDefault(); 
-    const { data: { user } } = await supabaseClient.auth.getUser()
-    
-    const type = getVal('inv_type')
-    const rawName = getVal('inv_name') // Nome sem o tipo
-    const balance = parseCurrency(getVal('inv_balance'))
-    const fullName = `${type} | ${rawName}` // Reconstrói o nome completo
-    
-    const year = currentDashboardDate.getFullYear()
-    const month = String(currentDashboardDate.getMonth() + 1).padStart(2, '0')
-    const refDate = `${year}-${month}-01`
-
-    let accountId = editingInvestmentId
-    
-    if (!editingInvestmentId) {
-        // Nova Conta
-        const { data, error } = await supabaseClient.from('accounts').insert([{ name: fullName, type: 'investment', initial_balance: balance, user_id: user.id }]).select()
-        if(error) { alert("Erro: " + error.message); return; }
-        accountId = data[0].id
-        await supabaseClient.from('asset_history').insert([{ account_id: accountId, user_id: user.id, amount: balance, reference_date: refDate }])
-    } else {
-        // Atualiza Conta
-        await supabaseClient.from('accounts').update({ name: fullName, initial_balance: balance }).eq('id', accountId)
-        
-        // Atualiza Histórico
-        const { data: exist } = await supabaseClient.from('asset_history').select('id').eq('account_id', accountId).eq('reference_date', refDate).maybeSingle()
-        if(exist) await supabaseClient.from('asset_history').update({ amount: balance }).eq('id', exist.id)
-        else await supabaseClient.from('asset_history').insert([{ account_id: accountId, user_id: user.id, amount: balance, reference_date: refDate }])
-    }
-    
-    closeInvestmentModal(); 
-    fetchInvestments();
-})
-
-// ================= FUNÇÕES DO ROBÔ E FETCHS ANTIGOS (MANTIDOS) =================
-async function processFixedExpenses(userId) {
-    const targetDate = new Date(currentDashboardDate); // CLONE DA DATA PARA SEGURANÇA
-    const targetMonth = targetDate.getMonth()
-    const targetYear = targetDate.getFullYear()
-    
-    const { data: fixedOps } = await supabaseClient.from('transactions').select('*').eq('user_id', userId).eq('is_fixed', true)
-    if (!fixedOps || fixedOps.length === 0) return
-
-    for (const op of fixedOps) {
-        const opDate = new Date(op.date + 'T00:00:00')
-        if (opDate.getMonth() === targetMonth && opDate.getFullYear() === targetYear) continue
-        if (opDate > new Date(targetYear, targetMonth + 1, 0)) continue
-
-        const startOfMonth = new Date(targetYear, targetMonth, 1).toISOString()
-        const endOfMonth = new Date(targetYear, targetMonth + 1, 0).toISOString()
-        const { data: duplicates } = await supabaseClient.from('transactions').select('id').eq('description', op.description).gte('date', startOfMonth).lte('date', endOfMonth)
-
-        if (duplicates.length === 0) {
-            const originalDay = opDate.getDate()
-            const lastDayOfTargetMonth = new Date(targetYear, targetMonth + 1, 0).getDate()
-            const newDate = new Date(targetYear, targetMonth, Math.min(originalDay, lastDayOfTargetMonth))
-
-            await supabaseClient.from('transactions').insert([{
-                description: op.description, amount: op.amount, type: op.type, category_id: op.category_id, 
-                account_id: op.account_id, payment_method: op.payment_method, user_id: userId, is_paid: false, 
-                date: newDate.toISOString().split('T')[0], credit_card_id: op.credit_card_id, is_fixed: false 
-            }])
-        }
+    const nameDisplay = document.getElementById('user-name-display');
+    if (userEmail && nameDisplay) {
+        const nickname = userEmail.split('@')[0];
+        nameDisplay.innerText = nickname.charAt(0).toUpperCase() + nickname.slice(1);
     }
 }
+
+window.toggleTheme = () => {
+    const html = document.documentElement;
+    const isDark = html.getAttribute('data-theme') === 'dark';
+    html.setAttribute('data-theme', isDark ? 'light' : 'dark');
+    localStorage.setItem('theme', isDark ? 'light' : 'dark');
+    
+    const icon = document.getElementById('theme-icon');
+    const text = document.getElementById('theme-text');
+    if(icon) icon.className = isDark ? 'fa-solid fa-moon' : 'fa-solid fa-sun';
+    if(text) text.innerText = isDark ? 'Modo Escuro' : 'Modo Claro';
+    
+    refreshCurrentView(); 
+}
+if(localStorage.getItem('theme') === 'dark') window.toggleTheme();
+
+
+// ==========================================
+// 4. TRANSAÇÕES (MOVIMENTAÇÕES)
+// ==========================================
+window.openModal = (type = 'expense') => {
+    editingTransactionId = null;
+    document.getElementById('form').reset();
+    document.querySelector('#modal-overlay h3').innerText = 'Nova Movimentação';
+    
+    // Abre modal
+    window.showModal('modal-overlay');
+    
+    // Reseta a visibilidade dos campos extras
+    document.getElementById('card-select-container').classList.add('hidden');
+    document.getElementById('installments-wrapper').classList.add('hidden');
+    document.getElementById('installments-count').classList.add('hidden');
+    
+    // Define o tipo
+    setType(type);
+    document.getElementById('date').value = new Date().toISOString().split('T')[0];
+    
+    // Garante que o select comece em Débito
+    document.getElementById('transaction-payment-method').value = 'debit';
+}
+
+window.closeModal = () => window.hideModal('modal-overlay');
 
 async function fetchTransactions() {
     const { data: { user } } = await supabaseClient.auth.getUser()
-    const year = currentDashboardDate.getFullYear(), month = currentDashboardDate.getMonth()
-    const start = new Date(year, month, 1).toISOString(), end = new Date(year, month + 1, 0).toISOString()
+    updateGreeting(user.email);
+    updateAccountsWidget(user.id);
+    fetchGoals(user.id);
 
-    // Busca transações
-    const { data: trans } = await supabaseClient.from('transactions')
+    const year = currentDashboardDate.getFullYear(), month = currentDashboardDate.getMonth()
+    const start = new Date(year, month, 1).toISOString()
+    const end = new Date(year, month + 1, 0).toISOString()
+
+    const { data: trans } = await supabaseClient
+        .from('transactions')
         .select(`*, categories (name)`)
-        .eq('user_id', user.id).gte('date', start).lte('date', end)
+        .eq('user_id', user.id)
+        .gte('date', start)
+        .lte('date', end)
         .order('date', {ascending: false})
     
-    globalTransactions = trans
+    globalTransactions = trans || []
     
-    // Calcula Totais
     let income=0, expense=0, cats={}
-    const list = document.getElementById('transactions-full') // Lista do Extrato
-    const preview = document.getElementById('transactions-preview') // Lista da Dashboard
-    
-    if(list) list.innerHTML = ''; 
-    if(preview) preview.innerHTML = '';
-    
-    trans.forEach((t, i) => {
-        if(t.is_paid) {
+    globalTransactions.forEach(t => {
+        if(t.is_paid || t.payment_method === 'credit_card') {
             if(t.type === 'income') income += t.amount
-            else {
-                expense += t.amount
-                const cName = t.categories?.name || 'Outros'
-                cats[cName] = (cats[cName] || 0) + t.amount
+            else { 
+                expense += t.amount; 
+                const cName = t.categories?.name || 'Outros'; 
+                cats[cName] = (cats[cName] || 0) + t.amount 
             }
         }
+    })
 
-        // --- GERAÇÃO DO HTML COM BOTÕES ---
+    if(document.getElementById('display-income')) document.getElementById('display-income').innerText = `R$ ${income.toLocaleString('pt-br',{minimumFractionDigits:2})}`
+    if(document.getElementById('display-expense')) document.getElementById('display-expense').innerText = `R$ ${expense.toLocaleString('pt-br',{minimumFractionDigits:2})}`
+    
+    const balance = income - expense;
+    if(document.getElementById('display-balance')) {
+        document.getElementById('display-balance').innerText = `R$ ${balance.toLocaleString('pt-br',{minimumFractionDigits:2})}`;
+        const cardBg = document.getElementById('card-balance-bg');
+        if(cardBg) {
+            if(balance < 0) { cardBg.style.background = '#fef2f2'; cardBg.style.color = '#991b1b'; } 
+            else { cardBg.style.background = '#eff6ff'; cardBg.style.color = '#1e40af'; }
+        }
+    }
+
+    renderExpenseChart(cats); 
+    renderInvestmentChart(user.id);
+    applyFilters();
+}
+
+window.applyFilters = () => {
+    const term = document.getElementById('trans-search')?.value.toLowerCase() || '';
+    const filtered = globalTransactions.filter(t => {
+        const matchesTerm = t.description.toLowerCase().includes(term) || (t.categories?.name || '').toLowerCase().includes(term);
+        const matchesType = currentFilterType === 'all' || t.type === currentFilterType;
+        return matchesTerm && matchesType;
+    });
+    renderList(filtered);
+}
+
+window.setFilter = (type, btnElement) => {
+    currentFilterType = type;
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    btnElement.classList.add('active');
+    applyFilters();
+}
+
+function renderList(listData) {
+    const list = document.getElementById('transactions-full');
+    const preview = document.getElementById('transactions-preview');
+    const noResults = document.getElementById('no-results');
+
+    if(list) list.innerHTML = ''; 
+    if(preview) preview.innerHTML = '';
+
+    if(listData.length === 0) {
+        if(noResults) noResults.classList.remove('hidden');
+        return;
+    } else {
+        if(noResults) noResults.classList.add('hidden');
+    }
+    
+    listData.forEach((t, i) => {
         const isInc = t.type === 'income'
-        const dateStr = new Date(t.date).toLocaleDateString('pt-BR')
-        
+        const dateStr = new Date(t.date).toLocaleDateString('pt-BR', {timeZone:'UTC'})
+        const catName = t.categories?.name || 'Sem categoria';
+        const statusIcon = t.is_paid 
+            ? '<i class="fa-solid fa-check-circle" style="color:var(--success)" title="Pago"></i>' : '<i class="fa-regular fa-circle" style="color:#cbd5e1" title="Pendente"></i>';
+
         const html = `
-        <li style="display:flex; justify-content:space-between; align-items:center; padding:12px 0; border-bottom:1px solid #f1f5f9">
-            <div>
-                <strong>${t.description}</strong><br>
-                <small style="color:#94a3b8">${dateStr}</small>
-            </div>
-            
+        <li class="transaction-item" style="display:flex; justify-content:space-between; align-items:center; padding:15px 0; border-bottom:1px solid #f1f5f9">
             <div style="display:flex; align-items:center; gap:15px">
-                <div style="font-weight:bold; color:${isInc?'var(--success)':'var(--danger)'}">
+                <div style="font-size:1.2rem">${statusIcon}</div>
+                <div>
+                    <strong style="font-size:0.95rem">${t.description}</strong>
+                    <div style="font-size:0.75rem; color:#64748b; margin-top:2px">
+                        <span style="background:#f1f5f9; padding:2px 6px; border-radius:4px">${catName}</span> • ${dateStr}
+                    </div>
+                </div>
+            </div>
+            <div style="display:flex; align-items:center; gap:15px">
+                <div style="font-weight:700; font-size:0.95rem; color:${isInc?'var(--success)':'var(--danger)'}">
                     ${isInc?'+':'-'} R$ ${t.amount.toLocaleString('pt-br',{minimumFractionDigits:2})}
                 </div>
-                
                 <div class="action-buttons">
-                    <button class="action-btn" onclick="prepareEdit(${t.id})"><i class="fa-solid fa-pen"></i></button>
-                    <button class="action-btn delete" onclick="removeTrans(${t.id})"><i class="fa-solid fa-trash"></i></button>
+                    <button class="action-btn" onclick="prepareEdit('${t.id}')"><i class="fa-solid fa-pen"></i></button>
+                    <button class="action-btn delete" onclick="removeTrans('${t.id}')"><i class="fa-solid fa-trash"></i></button>
                 </div>
             </div>
         </li>`
 
-        // Adiciona na lista do Extrato
         if(list) list.innerHTML += html
-        // Adiciona na Dashboard (só os 5 primeiros)
         if(preview && i < 5) preview.innerHTML += html
     })
-
-    // Atualiza Totais na Tela
-    if(document.getElementById('display-income')) document.getElementById('display-income').innerText = `R$ ${income.toLocaleString('pt-br',{minimumFractionDigits:2})}`
-    if(document.getElementById('display-expense')) document.getElementById('display-expense').innerText = `R$ ${expense.toLocaleString('pt-br',{minimumFractionDigits:2})}`
-    if(document.getElementById('display-total')) document.getElementById('display-total').innerText = `R$ ${(income - expense).toLocaleString('pt-br',{minimumFractionDigits:2})}`
-
-    // Atualiza Gráficos
-    renderExpenseChart(cats)
-    renderInvestmentChart(user.id)
 }
 
+// SALVAR TRANSAÇÃO
+document.getElementById('form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const user = (await supabaseClient.auth.getUser()).data.user;
+    
+    const amountVal = document.getElementById('amount').value.replace(/\./g, '').replace(',', '.');
+    const desc = document.getElementById('description').value;
+    const date = document.getElementById('date').value;
+    const cat = document.getElementById('category').value;
+    const type = document.getElementById('type').value;
+    const paymentMethod = document.getElementById('transaction-payment-method').value;
+    
+    let accId = null;
+    let creditCardId = null;
+
+    if (paymentMethod === 'credit_card') {
+        creditCardId = document.getElementById('transaction-card-input').value;
+        if (!creditCardId) return alert("Selecione um cartão!");
+    } else {
+        const accEl = document.getElementById('account');
+        if(accEl) accId = accEl.value;
+        if (!accId) return alert("Selecione uma conta/carteira!");
+    }
+    
+    const isPaid = document.getElementById('check-paid').checked;
+    const isFixed = document.getElementById('check-fixed').checked;
+    const isInstallment = document.getElementById('check-installments').checked;
+    let installmentsCount = 1;
+    
+    if (isInstallment && paymentMethod === 'credit_card') {
+        installmentsCount = parseInt(document.getElementById('installments-count').value);
+        if (!installmentsCount || installmentsCount < 2) return alert("Mínimo 2 parcelas.");
+    }
+
+    let error = null;
+    const loopCount = editingTransactionId ? 1 : installmentsCount;
+    const baseAmount = parseFloat(amountVal);
+    const installmentValue = installmentsCount > 1 ? (baseAmount / installmentsCount) : baseAmount;
+
+    for (let i = 0; i < loopCount; i++) {
+        let finalDate = new Date(date);
+        finalDate.setMonth(finalDate.getMonth() + i);
+        let finalDesc = desc;
+        if (installmentsCount > 1) finalDesc = `${desc} (${i + 1}/${installmentsCount})`;
+
+        const data = {
+            user_id: user.id, amount: installmentValue, description: finalDesc, date: finalDate.toISOString().split('T')[0],
+            category_id: cat, account_id: accId, type: type, is_paid: isPaid, is_fixed: isFixed,
+            payment_method: paymentMethod, credit_card_id: creditCardId,
+            installments_total: installmentsCount > 1 ? installmentsCount : 1,
+            installment_number: installmentsCount > 1 ? (i + 1) : 1
+        };
+
+        if (editingTransactionId) {
+            const { error: err } = await supabaseClient.from('transactions').update(data).eq('id', editingTransactionId);
+            error = err;
+        } else {
+            const { error: err } = await supabaseClient.from('transactions').insert([data]);
+            error = err;
+        }
+        if(error) break;
+    }
+
+    if (error) alert("Erro: " + error.message);
+    else {
+        window.hideModal('modal-overlay'); fetchTransactions(); if(paymentMethod === 'credit_card') fetchCards();
+    }
+});
+
+// EDITAR TRANSAÇÃO
+window.prepareEdit = async (id) => {
+    const t = globalTransactions.find(tr => tr.id == id);
+    if (!t) return;
+
+    editingTransactionId = id;
+    document.querySelector('#modal-overlay h3').innerText = 'Editar Movimentação';
+    
+    // Abre a MOVIMENTAÇÃO (ID correto)
+    window.showModal('modal-overlay');
+    
+    document.getElementById('amount').value = t.amount.toLocaleString('pt-br', {minimumFractionDigits:2});
+    document.getElementById('description').value = t.description;
+    document.getElementById('date').value = t.date.split('T')[0];
+    document.getElementById('category').value = t.category_id || '';
+    
+    if(document.getElementById('account')) document.getElementById('account').value = t.account_id || '';
+
+    setType(t.type);
+
+    const paymentSelect = document.getElementById('transaction-payment-method');
+    
+    if (t.credit_card_id || t.payment_method === 'credit_card') {
+        paymentSelect.value = 'credit_card';
+        paymentSelect.dispatchEvent(new Event('change'));
+        await loadCardOptions(); 
+        const cardInput = document.getElementById('transaction-card-input');
+        if(cardInput) cardInput.value = t.credit_card_id;
+    } else {
+        paymentSelect.value = 'debit';
+        paymentSelect.dispatchEvent(new Event('change'));
+    }
+
+    document.getElementById('check-paid').checked = t.is_paid;
+    document.getElementById('check-fixed').checked = t.is_fixed;
+}
+
+window.removeTrans = async (id) => {
+    if(confirm('Apagar transação?')) {
+        await supabaseClient.from('transactions').delete().eq('id', id);
+        fetchTransactions();
+    }
+}
+
+// ==========================================
+// 5. CARTÕES (SISTEMA CORRIGIDO)
+// ==========================================
+
+// Abrir Modal de Cartão
+window.openCardModal = function() {
+    console.log("Clicou em Novo Cartão");
+    editingCardId = null;
+    const form = document.getElementById('form-card');
+    if(form) form.reset();
+    
+    // Abre o modal de CARTÃO (ID correto)
+    window.showModal('modal-card-overlay');
+}
+
+// Fechar Modal de Cartão
+window.closeCardModal = function() {
+    window.hideModal('modal-card-overlay');
+}
+
+// Editar Cartão
+window.prepareEditCard = function(id) {
+    console.log("Editando cartão ID:", id);
+    const card = globalCards.find(c => c.id == id);
+    if (!card) return alert("Erro: Cartão não encontrado.");
+    
+    editingCardId = id;
+    document.getElementById('card_name').value = card.name;
+    
+    let val = card.limit_amount || card.limit || 0;
+    if(typeof val === 'string') val = parseFloat(val.replace(/\./g, '').replace(',', '.'));
+    document.getElementById('card_limit').value = val.toLocaleString('pt-br', {minimumFractionDigits: 2});
+    
+    document.getElementById('card_close').value = card.closing_day || 1;
+    document.getElementById('card_due').value = card.due_day || 10;
+    
+    // Abre o modal de CARTÃO
+    window.showModal('modal-card-overlay');
+}
+
+// Listar Cartões
+async function fetchCards() {
+    try {
+        const { data: { user } } = await supabaseClient.auth.getUser()
+        const year = currentDashboardDate.getFullYear(), month = currentDashboardDate.getMonth()
+        
+        const { data: cards } = await supabaseClient.from('credit_cards').select('*').eq('user_id', user.id)
+        const { data: expenses } = await supabaseClient.from('transactions').select('*').eq('user_id', user.id).eq('payment_method', 'credit_card')
+        
+        const safeExpenses = expenses || [];
+        globalCards = cards || [];
+        
+        const grid = document.getElementById('cards-grid');
+        if(!grid) return;
+
+        if(!cards || cards.length === 0) { 
+            grid.innerHTML = '<p style="grid-column: 1/-1; text-align:center; color:#94a3b8; margin-top:20px">Nenhum cartão cadastrado.</p>'; 
+            return 
+        }
+
+        let htmlContent = '';
+        cards.forEach(card => {
+            const totalUsed = safeExpenses.filter(t => t.credit_card_id === card.id).reduce((acc, t) => acc + Number(t.amount), 0)
+            const limit = safeNumber(card.limit_amount || card.limit);
+            
+            const available = limit - totalUsed;
+            const percent = limit > 0 ? Math.min((totalUsed/limit)*100, 100) : 0
+            
+            const monthExpenses = safeExpenses.filter(t => { 
+                const d=new Date(t.date+'T00:00:00'); 
+                return t.credit_card_id === card.id && d.getMonth() === month && d.getFullYear() === year 
+            }).sort((a,b) => new Date(b.date) - new Date(a.date))
+            
+            const invoiceTotal = monthExpenses.reduce((acc, t) => acc + Number(t.amount), 0)
+            
+            let itemsHTML = ''; 
+            monthExpenses.forEach(item => { 
+                itemsHTML += `<div class="invoice-item"><div><span class="inv-date">${new Date(item.date).getDate()}</span><strong>${item.description}</strong></div><b>R$ ${item.amount.toLocaleString('pt-br',{minimumFractionDigits:2})}</b></div>` 
+            })
+            if(itemsHTML === '') itemsHTML = '<div style="padding:10px; text-align:center; color:#ccc; font-size:0.8rem">Sem gastos este mês</div>';
+
+            let bg = 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)'; 
+            if(card.name.toLowerCase().includes('nu')) bg = 'linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%)'; 
+
+            htmlContent += `
+            <div class="card-wrapper">
+                <div class="credit-card" style="background:${bg}">
+                    <div style="display:flex;justify-content:space-between">
+                        <h3>${card.name}</h3>
+                        <div class="card-actions">
+                            <button class="card-action-btn" onclick="prepareEditCard('${card.id}')"><i class="fa-solid fa-pen"></i></button>
+                            <button class="card-action-btn" onclick="removeCard('${card.id}')"><i class="fa-solid fa-trash"></i></button>
+                        </div>
+                    </div>
+                    <div>
+                        <h2 style="font-size:1.8rem">R$ ${invoiceTotal.toLocaleString('pt-br',{minimumFractionDigits:2})}</h2>
+                        <div style="display:flex; justify-content:space-between; font-size:0.8rem; margin-bottom:5px; opacity:0.8">
+                            <span>Fatura Atual</span>
+                            <span>Disp: ${available.toLocaleString('pt-br',{minimumFractionDigits:2})}</span>
+                        </div>
+                        <div class="limit-bar"><div class="limit-fill" style="width:${percent}%;background:white"></div></div>
+                    </div>
+                </div>
+                <div class="card-invoice-section">
+                    <h5 style="margin-bottom:10px; color:#64748b; font-size:0.8rem; text-transform:uppercase">Extrato Mensal</h5>
+                    <div class="invoice-list">${itemsHTML}</div>
+                </div>
+            </div>`
+        })
+        grid.innerHTML = htmlContent;
+
+    } catch (e) { console.error("Erro Cartões:", e); }
+}
+
+// Salvar Cartão
+document.getElementById('form-card').addEventListener('submit', async(e)=>{
+    e.preventDefault(); 
+    const user=(await supabaseClient.auth.getUser()).data.user; 
+    const data={
+        name:document.getElementById('card_name').value, 
+        limit_amount:parseFloat(document.getElementById('card_limit').value.replace(/\./g, '').replace(',', '.')), 
+        closing_day:document.getElementById('card_close').value, 
+        due_day:document.getElementById('card_due').value, 
+        user_id:user.id
+    }; 
+    if(editingCardId) await supabaseClient.from('credit_cards').update(data).eq('id',editingCardId); 
+    else await supabaseClient.from('credit_cards').insert([data]); 
+    
+    window.hideModal('modal-card-overlay'); fetchCards();
+})
+
+window.removeCard=async(id)=>{ if(confirm('Apagar cartão?')){ await supabaseClient.from('credit_cards').delete().eq('id',id); fetchCards(); } }
+
+
+// ==========================================
+// 6. CONTAS
+// ==========================================
+async function updateAccountsWidget(userId) {
+    const list = document.getElementById('accounts-list-widget')
+    if(!list) return
+
+    const { data: accs } = await supabaseClient.from('accounts').select('*').eq('user_id', userId).neq('type', 'investment')
+    globalAccounts = accs || [];
+
+    const { data: transactions } = await supabaseClient.from('transactions').select('amount, type, account_id, is_paid').eq('user_id', userId).eq('is_paid', true)
+    
+    list.innerHTML = ''
+    let totalGlobal = 0
+    
+    if(!accs || accs.length === 0) {
+        list.innerHTML = '<div style="padding:10px; color:#9ca3af; font-size:0.9rem">Nenhuma conta.</div>'
+    } else {
+        accs.forEach(acc => {
+            const accountMoves = transactions.filter(t => t.account_id === acc.id);
+            const totalIncome = accountMoves.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
+            const totalExpense = accountMoves.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+            const currentBalance = acc.initial_balance + totalIncome - totalExpense;
+            totalGlobal += currentBalance
+
+            let color = '#94a3b8'; let icon = 'fa-wallet';
+            const n = acc.name.toLowerCase()
+            if(n.includes('nu')) { color='#8b5cf6'; icon='fa-building-columns' } 
+            
+            list.innerHTML += `
+                <div class="account-item">
+                    <div style="display:flex; align-items:center; gap:12px">
+                        <div class="acc-icon" style="background:${color}"><i class="fa-solid ${icon}"></i></div>
+                        <div><strong style="display:block; font-size:0.9rem">${acc.name}</strong></div>
+                    </div>
+                    <div style="text-align:right">
+                        <div style="font-weight:700; font-size:0.95rem;">R$ ${currentBalance.toLocaleString('pt-br',{minimumFractionDigits:2})}</div>
+                        <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:4px">
+                            <button onclick="prepareEditAccount('${acc.id}')" style="border:none; background:none; color:#94a3b8; cursor:pointer;"><i class="fa-solid fa-pen"></i></button>
+                            <button onclick="removeAccount('${acc.id}')" style="border:none; background:none; color:#ef4444; cursor:pointer;"><i class="fa-solid fa-trash"></i></button>
+                        </div>
+                    </div>
+                </div>`
+        })
+    }
+    document.getElementById('total-accounts-balance').innerText = `R$ ${totalGlobal.toLocaleString('pt-br',{minimumFractionDigits:2})}`
+}
+
+window.prepareEditAccount = (id) => {
+    const acc = globalAccounts.find(x => x.id == id); 
+    if (!acc) return alert("Conta não encontrada."); 
+    editingAccountId = id; 
+    document.getElementById('acc_name').value = acc.name; 
+    document.getElementById('acc_balance').value = acc.initial_balance.toLocaleString('pt-br', {minimumFractionDigits: 2}); 
+    window.showModal('modal-account-overlay'); 
+}
+window.openAccountModal = () => { editingAccountId = null; document.getElementById('form-account').reset(); window.showModal('modal-account-overlay'); }
+window.closeAccountModal = () => { window.hideModal('modal-account-overlay'); }
+
+document.getElementById('form-account').addEventListener('submit', async (e) => {
+    e.preventDefault(); 
+    const user = (await supabaseClient.auth.getUser()).data.user; 
+    const name = document.getElementById('acc_name').value; 
+    const balance = parseFloat(document.getElementById('acc_balance').value.replace(/\./g, '').replace(',', '.'));
+    
+    if (editingAccountId) await supabaseClient.from('accounts').update({ name: name, initial_balance: balance }).eq('id', editingAccountId);
+    else await supabaseClient.from('accounts').insert([{ name: name, initial_balance: balance, type: 'wallet', user_id: user.id }]);
+    
+    window.hideModal('modal-account-overlay'); updateAccountsWidget(user.id); loadDropdowns(user.id);
+});
+window.removeAccount = async (id) => { if (confirm('Excluir conta?')) { await supabaseClient.from('accounts').delete().eq('id', id); const user = (await supabaseClient.auth.getUser()).data.user; updateAccountsWidget(user.id); } }
+
+
+// ==========================================
+// 7. HELPERS, MODAIS E GRÁFICOS
+// ==========================================
+window.setType = (type) => {
+    document.getElementById('type').value = type;
+    const btnExp = document.getElementById('btn-type-expense'); const btnInc = document.getElementById('btn-type-income');
+    if (type === 'expense') { btnExp.classList.add('active-expense'); btnInc.classList.remove('active-income'); } 
+    else { btnExp.classList.remove('active-expense'); btnInc.classList.add('active-income'); }
+}
+
+async function loadCardOptions() {
+    const targetSelect = document.getElementById('transaction-card-input');
+    if (!targetSelect) return;
+
+    targetSelect.innerHTML = '<option value="">Buscando limites...</option>';
+
+    try {
+        const { data: { user } } = await supabaseClient.auth.getUser();
+        
+        const { data: cards } = await supabaseClient.from('credit_cards').select('*').eq('user_id', user.id);
+        const { data: expenses } = await supabaseClient.from('transactions')
+            .select('amount, credit_card_id')
+            .eq('user_id', user.id)
+            .eq('payment_method', 'credit_card'); 
+
+        targetSelect.innerHTML = '<option value="">Selecione o cartão...</option>';
+
+        if (cards && cards.length > 0) {
+            cards.forEach(card => {
+                const option = document.createElement('option');
+                option.value = card.id;
+                
+                const limit = safeNumber(card.limit_amount || card.limit);
+                const used = (expenses || [])
+                    .filter(e => e.credit_card_id === card.id)
+                    .reduce((sum, e) => sum + e.amount, 0);
+
+                const available = limit - used;
+
+                option.innerText = `${card.name} (Disp: R$ ${available.toLocaleString('pt-BR', {minimumFractionDigits:2})})`;
+                targetSelect.appendChild(option);
+            });
+        } else {
+            targetSelect.innerHTML = '<option value="">Nenhum cartão cadastrado</option>';
+        }
+
+    } catch (e) {
+        console.error("Erro ao carregar lista de cartões:", e);
+    }
+}
+
+function setupEventListeners() {
+    const payMethod = document.getElementById('transaction-payment-method');
+    const cardContainer = document.getElementById('card-select-container');
+    const installWrapper = document.getElementById('installments-wrapper');
+    const accountDiv = document.getElementById('account')?.parentElement; // O pai do select de conta
+
+    if(payMethod) {
+        payMethod.addEventListener('change', (e) => {
+            const method = e.target.value;
+            
+            if(method === 'credit_card') {
+                // SE FOR CARTÃO DE CRÉDITO:
+                // 1. Mostra o select de cartões
+                cardContainer.classList.remove('hidden');
+                // 2. Mostra a opção de parcelar
+                installWrapper.classList.remove('hidden');
+                // 3. Esconde a seleção de Conta/Carteira (pois vai sair do limite do cartão)
+                if(accountDiv) accountDiv.classList.add('hidden');
+                
+                // Carrega a lista de cartões atualizada
+                loadCardOptions();
+            } else {
+                // SE FOR DÉBITO/DINHEIRO:
+                // 1. Esconde cartões
+                cardContainer.classList.add('hidden');
+                // 2. Esconde parcelamento
+                installWrapper.classList.add('hidden');
+                // 3. Mostra a conta de onde vai sair o dinheiro
+                if(accountDiv) accountDiv.classList.remove('hidden');
+                
+                // Reseta checkboxes de parcela
+                document.getElementById('check-installments').checked = false;
+                toggleInstallmentInput();
+            }
+        });
+    }
+}
+
+window.toggleInstallmentInput = () => {
+    const check = document.getElementById('check-installments');
+    const input = document.getElementById('installments-count');
+    if (check && check.checked) { input.classList.remove('hidden'); input.focus(); } 
+    else { input.classList.add('hidden'); input.value = ''; }
+}
+
+async function loadDropdowns(uid) {
+    let {data:cats} = await supabaseClient.from('categories').select('*').or(`user_id.eq.${uid},is_default.eq.true`);
+    let {data:accs} = await supabaseClient.from('accounts').select('*').eq('user_id',uid).neq('type','investment');
+    if(accs.length === 0) { accs = (await supabaseClient.from('accounts').insert([{name:'Carteira',type:'wallet',user_id:uid}]).select()).data; }
+    const fill = (id, list) => { const el = document.getElementById(id); if(!el) return; el.innerHTML = ''; list.forEach(x => el.innerHTML += `<option value="${x.id}">${x.name}</option>`); };
+    fill('category', cats); fill('goal_category', cats); fill('account', accs);
+}
+
+// GRÁFICOS
 function renderExpenseChart(cats) {
-    const ctx = document.getElementById('expenseChart'); if(!ctx) return; if(myChart) myChart.destroy();
-    const colors = ['#f43f5e', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6'];
-    myChart = new Chart(ctx, { type: 'doughnut', data: { labels: Object.keys(cats), datasets: [{ data: Object.values(cats), backgroundColor: colors, borderWidth: 0 }] }, options: { responsive: true, maintainAspectRatio: false, cutout: '70%', plugins: { legend: { position:'right', labels:{boxWidth:12, usePointStyle:true} } } } })
+    const ctx = document.getElementById('expenseChart'); 
+    if(!ctx) return; 
+    
+    if(myChart) myChart.destroy();
+    
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    const textColor = isDark ? '#f1f5f9' : '#1e293b';
+    
+    myChart = new Chart(ctx, { 
+        type: 'doughnut', 
+        data: { 
+            labels: Object.keys(cats), 
+            datasets: [{ 
+                data: Object.values(cats), 
+                backgroundColor: ['#f43f5e', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6'], 
+                borderWidth: 0, // Remove a borda branca para ficar mais clean
+                hoverOffset: 4  // Efeito ao passar o mouse
+            }] 
+        }, 
+        options: { 
+            responsive: true, 
+            maintainAspectRatio: false, 
+            cutout: '75%', // Deixa a rosca um pouco mais fina e elegante
+            layout: {
+                // AQUI ESTÁ A CORREÇÃO: Margem interna para não cortar
+                padding: {
+                    top: 10,
+                    bottom: 20, // Mais espaço embaixo
+                    left: 10,
+                    right: 10
+                }
+            },
+            plugins: { 
+                legend: { 
+                    position: 'right', 
+                    labels: { 
+                        boxWidth: 12, 
+                        usePointStyle: true, 
+                        color: textColor,
+                        padding: 15, // Espaço vertical entre os itens da legenda
+                        font: {
+                            size: 11
+                        }
+                    } 
+                },
+                tooltip: {
+                    backgroundColor: isDark ? '#1e293b' : '#ffffff',
+                    titleColor: isDark ? '#ffffff' : '#1e293b',
+                    bodyColor: isDark ? '#cbd5e1' : '#64748b',
+                    borderColor: isDark ? '#334155' : '#e2e8f0',
+                    borderWidth: 1,
+                    padding: 10,
+                    cornerRadius: 8,
+                    displayColors: true
+                }
+            } 
+        } 
+    })
 }
+
 async function renderInvestmentChart(userId) {
-    const ctx = document.getElementById('investmentChart'); if(!ctx) return;
+    const ctx = document.getElementById('investmentChart'); 
+    if(!ctx) return;
+    
+    // Configurações de cores baseadas no tema
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark'; 
+    const textColor = isDark ? '#94a3b8' : '#64748b'; 
+    const gridColor = isDark ? '#334155' : '#f1f5f9';
+    
     const { data: history } = await supabaseClient.from('asset_history').select('reference_date, amount').eq('user_id', userId).order('reference_date', { ascending: true })
+    
     const grouped = {}; 
     if(!history || history.length === 0) {
         const { data: accs } = await supabaseClient.from('accounts').select('initial_balance').eq('user_id', userId).eq('type', 'investment'); 
-        grouped[new Date().toLocaleDateString('pt-BR', {month:'short', year:'2-digit'})] = accs.reduce((a,b) => a + b.initial_balance, 0)
-    } else { history.forEach(h => { const l = new Date(h.reference_date).toLocaleDateString('pt-BR', {month:'short', year:'2-digit'}); grouped[l] = (grouped[l]||0)+h.amount }) }
-    if(investmentChart) investmentChart.destroy();
-    investmentChart = new Chart(ctx, { type: 'line', data: { labels: Object.keys(grouped), datasets: [{ label: 'Patrimônio', data: Object.values(grouped), borderColor: '#10b981', backgroundColor: 'rgba(16, 185, 129, 0.1)', borderWidth: 3, tension: 0.4, fill: true, pointRadius: 4 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, grid: { color: '#f1f5f9' } }, x: { grid: { display: false } } } } })
-}
-function renderAllocationChart(dataObj) {
-    const ctx = document.getElementById('allocationChart'); if(!ctx) return; if(allocationChart) allocationChart.destroy();
-    allocationChart = new Chart(ctx, { type: 'doughnut', data: { labels: Object.keys(dataObj), datasets: [{ data: Object.values(dataObj), backgroundColor: ['#10b981', '#3b82f6', '#f59e0b', '#8b5cf6'], borderWidth: 0 }] }, options: { responsive: true, maintainAspectRatio: false, cutout: '65%', plugins: { legend: { position: 'right', labels: { usePointStyle: true, boxWidth: 8 } } } } })
-}
-
-// RESTANTE DAS FUNÇÕES (CATEGORIA, CARTÕES, UTILS)
-async function fetchCategories() {
-    const { data: { user } } = await supabaseClient.auth.getUser()
-    const { data: cats } = await supabaseClient.from('categories').select('*').or(`user_id.eq.${user.id},is_default.eq.true`)
-    globalCategories = cats; const grid = document.getElementById('categories-list'); grid.innerHTML = ''
-    cats.forEach(c => {
-        const btns = c.is_default ? '' : `<div class="action-buttons"><button class="action-btn" onclick="prepareEditCat(${c.id})"><i class="fa-solid fa-pen"></i></button><button class="action-btn delete" onclick="removeCat(${c.id})"><i class="fa-solid fa-trash"></i></button></div>`
-        grid.innerHTML += `<div class="category-card"><div style="display:flex;align-items:center;gap:12px"><div style="background:#f1f5f9;color:var(--primary);width:35px;height:35px;display:flex;align-items:center;justify-content:center;border-radius:8px"><i class="fa-solid ${c.icon||'fa-tag'}"></i></div><strong>${c.name}</strong></div>${btns}</div>`
-    })
-}
-async function fetchCards() { /* Mesma lógica já corrigida de cartões */
-    const { data: { user } } = await supabaseClient.auth.getUser()
-    const year = currentDashboardDate.getFullYear(), month = currentDashboardDate.getMonth()
-    const { data: cards } = await supabaseClient.from('credit_cards').select('*').eq('user_id', user.id)
-    const { data: expenses } = await supabaseClient.from('transactions').select('*').eq('user_id', user.id).eq('payment_method', 'credit_card')
-    globalCards = cards; const grid = document.getElementById('cards-grid'); if(grid) grid.innerHTML = ''
-    if(cards.length === 0 && grid) { grid.innerHTML = '<p>Nenhum cartão.</p>'; return }
-    cards.forEach(card => {
-        const totalUsed = expenses.filter(t => t.credit_card_id === card.id).reduce((acc, t) => acc + Number(t.amount), 0)
-        const limit = Number(card.limit_amount); const available = limit - totalUsed; const percent = Math.min((totalUsed/limit)*100, 100)
-        const monthExpenses = expenses.filter(t => { const d=new Date(t.date+'T00:00:00'); return t.credit_card_id===card.id && d.getMonth()===month && d.getFullYear()===year }).sort((a,b)=>new Date(b.date)-new Date(a.date))
-        const invoiceTotal = monthExpenses.reduce((acc, t) => acc + Number(t.amount), 0)
-        let itemsHTML = ''; monthExpenses.forEach(item => { itemsHTML += `<div class="invoice-item"><div><span class="inv-date">${new Date(item.date).getDate()}</span><strong>${item.description}</strong></div><b>R$ ${item.amount}</b></div>` })
-        let bg = '#1e293b'; if(card.name.toLowerCase().includes('nu')) bg='#8b5cf6'; if(card.name.toLowerCase().includes('inter')) bg='#f97316';
-        grid.innerHTML += `<div class="card-wrapper"><div class="credit-card" style="background:${bg}"><div style="display:flex;justify-content:space-between"><h3>${card.name}</h3><div class="card-actions"><button class="card-action-btn" onclick="prepareEditCard(${card.id})"><i class="fa-solid fa-pen"></i></button><button class="card-action-btn" onclick="removeCard(${card.id})"><i class="fa-solid fa-trash"></i></button></div></div><div><h2>R$ ${invoiceTotal.toFixed(2)}</h2><small>Disp: ${available.toFixed(2)}</small><div class="limit-bar"><div class="limit-fill" style="width:${percent}%;background:white"></div></div></div></div><div class="card-invoice-section"><div class="invoice-list">${itemsHTML}</div></div></div>`
-    })
-}
-
-const getVal=(id)=>document.getElementById(id).value; const setVal=(id,v)=>document.getElementById(id).value=v
-const open=(id)=>document.getElementById(id).classList.remove('hidden'); const close=(id)=>document.getElementById(id).classList.add('hidden')
-const parseCurrency=(v)=>parseFloat(v.replace(/[^\d,]/g, '').replace(',', '.')||0)
-window.openModal=()=>{editingTransactionId=null;document.getElementById('form').reset();open('modal-overlay')}
-window.closeModal=()=>close('modal-overlay'); window.openCardModal=()=>{editingCardId=null;document.getElementById('form-card').reset();open('modal-card-overlay')}; window.closeCardModal=()=>close('modal-card-overlay')
-window.openInvestmentModal=()=>{editingInvestmentId=null;document.getElementById('form-investment').reset();open('modal-investment-overlay')}; window.closeInvestmentModal=()=>close('modal-investment-overlay')
-window.openCategoryModal=()=>{editingCategoryId=null;document.getElementById('form-category').reset();open('modal-category-overlay')}; window.closeCategoryModal=()=>close('modal-category-overlay')
-window.prepareEdit=(id)=>{const t=globalTransactions.find(x=>x.id===id); editingTransactionId=id; setVal('description',t.description); setVal('amount',t.amount.toLocaleString('pt-br',{minimumFractionDigits:2})); setVal('type',t.type); setVal('date',t.date); setVal('category',t.category_id); setVal('account',t.account_id); document.getElementById('is_fixed').checked=t.is_fixed; open('modal-overlay')}
-window.prepareEditCard=(id)=>{const c=globalCards.find(x=>x.id===id); editingCardId=id; setVal('card_name',c.name); setVal('card_limit',c.limit_amount); open('modal-card-overlay')}
-window.prepareEditCat=(id)=>{const c=globalCategories.find(x=>x.id===id); editingCategoryId=id; setVal('cat_name',c.name); open('modal-category-overlay')}
-window.removeTrans=async(id)=>{if(confirm('Apagar?')){await supabaseClient.from('transactions').delete().eq('id',id); fetchTransactions()}}
-window.removeCard=async(id)=>{if(confirm('Apagar?')){await supabaseClient.from('credit_cards').delete().eq('id',id); fetchCards()}}
-window.removeInv=async(id)=>{if(confirm('Apagar?')){await supabaseClient.from('accounts').delete().eq('id',id); fetchInvestments()}}
-window.removeCat = async (id) => {
-    if (confirm('Tem certeza que deseja apagar esta categoria?')) {
-        
-        // Tenta apagar
-        const { error } = await supabaseClient.from('categories').delete().eq('id', id);
-
-        if (error) {
-            // Erro 23503 é o código do banco para "Existe coisa vinculada a isso"
-            if (error.code === '23503') {
-                alert("🚫 Não foi possível apagar!\n\nEsta categoria está sendo usada em alguma transação (Receita ou Despesa).\n\nApague ou mude a categoria dessas transações antes de excluir a categoria.");
-            } else {
-                alert("Erro ao apagar: " + error.message);
-            }
-        } else {
-            // Se deu certo, atualiza a tela
-            fetchCategories();
-            const user = (await supabaseClient.auth.getUser()).data.user
-            loadDropdowns(user.id) // Atualiza o select de categorias no modal
-        }
+        const labelHoje = new Date().toLocaleDateString('pt-BR', {month:'short', year:'2-digit'});
+        grouped[labelHoje] = accs.reduce((a,b) => a + b.initial_balance, 0)
+    } else { 
+        history.forEach(h => { 
+            const l = new Date(h.reference_date).toLocaleDateString('pt-BR', {month:'short', year:'2-digit'}); 
+            grouped[l] = (grouped[l]||0)+h.amount 
+        }) 
     }
+    
+    if(investmentChart) investmentChart.destroy();
+    
+    investmentChart = new Chart(ctx, { 
+        type: 'line', 
+        data: { 
+            labels: Object.keys(grouped), 
+            datasets: [{ 
+                label: 'Patrimônio', 
+                data: Object.values(grouped), 
+                borderColor: '#10b981', 
+                backgroundColor: 'rgba(16, 185, 129, 0.1)', 
+                borderWidth: 3, 
+                tension: 0.4, 
+                fill: true, 
+                pointRadius: 6, 
+                pointHoverRadius: 8 
+            }] 
+        }, 
+        options: { 
+            responsive: true, 
+            maintainAspectRatio: false, 
+            layout: { 
+                // AQUI ESTÁ O SEGREDO PARA NÃO CORTAR O GRÁFICO
+                padding: { left: 10, right: 25, top: 20, bottom: 10 } 
+            }, 
+            plugins: { 
+                legend: { display: false } 
+            }, 
+            scales: { 
+                y: { 
+                    beginAtZero: true, 
+                    grid: { color: gridColor }, 
+                    ticks: { color: textColor } 
+                }, 
+                x: { 
+                    offset: true, 
+                    grid: { display: false }, 
+                    ticks: { color: textColor } 
+                } 
+            } 
+        } 
+    })
 }
-document.getElementById('form').addEventListener('submit', async(e)=>{e.preventDefault(); const user=(await supabaseClient.auth.getUser()).data.user; const data={description:getVal('description'), amount:parseCurrency(getVal('amount')), type:getVal('type'), date:getVal('date'), category_id:getVal('category'), account_id:getVal('account'), payment_method:getVal('payment_method'), user_id:user.id, is_fixed:document.getElementById('is_fixed').checked, is_paid:document.getElementById('is_paid').checked}; if(editingTransactionId) await supabaseClient.from('transactions').update(data).eq('id',editingTransactionId); else await supabaseClient.from('transactions').insert([data]); closeModal(); fetchTransactions()})
-document.getElementById('form-card').addEventListener('submit', async(e)=>{e.preventDefault(); const user=(await supabaseClient.auth.getUser()).data.user; const data={name:getVal('card_name'), limit_amount:parseCurrency(getVal('card_limit')), closing_day:getVal('card_close'), due_day:getVal('card_due'), user_id:user.id}; if(editingCardId) await supabaseClient.from('credit_cards').update(data).eq('id',editingCardId); else await supabaseClient.from('credit_cards').insert([data]); closeCardModal(); fetchCards()})
-document.getElementById('form-category').addEventListener('submit', async(e)=>{e.preventDefault(); const user=(await supabaseClient.auth.getUser()).data.user; const data={name:getVal('cat_name'), icon:getVal('cat_icon'), user_id:user.id, is_default:false, type:'expense'}; if(editingCategoryId) await supabaseClient.from('categories').update(data).eq('id',editingCategoryId); else await supabaseClient.from('categories').insert([data]); closeCategoryModal(); fetchCategories(); loadDropdowns(user.id)})
-window.toggleCardInput=()=>{if(getVal('payment_method')==='credit_card')document.getElementById('credit_card_options').classList.remove('hidden'); else document.getElementById('credit_card_options').classList.add('hidden')}
-window.toggleInstallments=()=>{if(document.getElementById('is_installment').checked)document.getElementById('installments_count').classList.remove('hidden');else document.getElementById('installments_count').classList.add('hidden')}
-async function loadDropdowns(uid){let{data:cats}=await supabaseClient.from('categories').select('*').or(`user_id.eq.${uid},is_default.eq.true`);let{data:accs}=await supabaseClient.from('accounts').select('*').eq('user_id',uid).neq('type','investment');let{data:cards}=await supabaseClient.from('credit_cards').select('*').eq('user_id',uid);if(accs.length===0)accs=(await supabaseClient.from('accounts').insert([{name:'Carteira',type:'wallet',user_id:uid}]).select()).data;const fill=(id,l)=>{const e=document.getElementById(id);e.innerHTML='';l.forEach(x=>e.innerHTML+=`<option value="${x.id}">${x.name}</option>`)};fill('category',cats);fill('account',accs);fill('credit_card_select',cards)}
 
-checkUser()
+// RESTANTE (Investimentos, Categorias, Metas)
+
+async function fetchInvestments() {
+    try {
+        const { data: { user } } = await supabaseClient.auth.getUser();
+        
+        // 1. Pega os dados básicos da conta (Nome, Tipo)
+        const { data: accs } = await supabaseClient
+            .from('accounts')
+            .select('*')
+            .eq('user_id', user.id)
+            .eq('type', 'investment');
+
+        // 2. Define a data do mês que estamos OLHANDO no painel
+        const year = currentDashboardDate.getFullYear();
+        const month = currentDashboardDate.getMonth() + 1; // JS é 0-11, banco é 1-12
+        // Formato YYYY-MM-01
+        const targetDate = `${year}-${String(month).padStart(2,'0')}-01`;
+
+        // 3. Busca o histórico EXATO deste mês
+        const { data: history } = await supabaseClient
+            .from('asset_history')
+            .select('account_id, amount')
+            .eq('user_id', user.id)
+            .eq('reference_date', targetDate);
+
+        const grid = document.getElementById('investments-grid');
+        if(!grid) return;
+        
+        grid.innerHTML = ''; 
+        globalInvestments = accs || [];
+
+        if(!accs || accs.length === 0) {
+            grid.innerHTML = '<p style="text-align:center; width:100%; color:#94a3b8; margin-top:20px;">Nenhum investimento.</p>';
+            return;
+        }
+
+        accs.forEach(acc => {
+            // Tenta achar o valor no histórico deste mês
+            const historyItem = history ? history.find(h => h.account_id === acc.id) : null;
+            
+            // Se tiver histórico no mês, usa. Se não, assume 0 (pendente de atualização)
+            const displayValue = historyItem ? historyItem.amount : 0;
+
+            // Formatação Visual (Igual ao anterior)
+            let type = 'Renda Fixa';
+            if(acc.name.includes('|')) type = acc.name.split('|')[0].trim();
+            const cleanName = acc.name.includes('|') ? acc.name.split('|')[1].trim() : acc.name;
+            
+            let icon = 'fa-chart-pie'; 
+            let bgClass = 'bg-fixed';
+            if(type.includes('Cripto')) { icon = 'fa-bitcoin'; bgClass = 'bg-crypto'; }
+            if(type.includes('Ações')) { icon = 'fa-arrow-trend-up'; bgClass = 'bg-stock'; }
+            if(type.includes('Reserva')) { icon = 'fa-shield-heart'; bgClass = 'bg-reserva'; }
+
+            // Botão de editar leva o valor que está na tela
+            grid.innerHTML += `
+            <div class="invest-card">
+                <div style="display:flex; justify-content:space-between; align-items:start">
+                    <div class="invest-icon ${bgClass}"><i class="fa-solid ${icon}"></i></div>
+                    <div class="action-buttons">
+                        <button class="action-btn" onclick="prepareEditInv('${acc.id}', ${displayValue}, '${cleanName}')"><i class="fa-solid fa-pen"></i></button>
+                        <button class="action-btn delete" onclick="removeInv('${acc.id}')"><i class="fa-solid fa-trash"></i></button>
+                    </div>
+                </div>
+                <div>
+                    <small style="color:var(--text-muted); text-transform:uppercase; font-size:0.75rem; font-weight:600">${type}</small>
+                    <h2 class="invest-value">R$ ${displayValue.toLocaleString('pt-br',{minimumFractionDigits:2})}</h2>
+                    <div style="font-size:0.9rem; color:#64748b;">${cleanName}</div>
+                    ${!historyItem ? '<small style="color:#f59e0b; font-size:0.7rem"><i class="fa-solid fa-triangle-exclamation"></i> Sem registro este mês</small>' : ''}
+                </div>
+            </div>`;
+        });
+
+    } catch(e) { console.error(e); }
+}
+window.openInvestmentModal=()=>{editingInvestmentId=null;document.getElementById('form-investment').reset();window.showModal('modal-investment-overlay')}; window.closeInvestmentModal=()=>window.hideModal('modal-investment-overlay')
+window.prepareEditInv = (id, val, name) => { editingInvestmentId = id; const acc = globalInvestments.find(x => x.id == id); let type = 'Renda Fixa'; if(acc.name.includes('|')) type = acc.name.split('|')[0].trim(); document.getElementById('inv_name').value=name; document.getElementById('inv_type').value=type; document.getElementById('inv_balance').value=val.toLocaleString('pt-br', {minimumFractionDigits: 2}); window.showModal('modal-investment-overlay') }
+document.getElementById('form-investment').addEventListener('submit', async(e) => { 
+    e.preventDefault(); 
+    const {data:{user}} = await supabaseClient.auth.getUser(); 
+    
+    const type = document.getElementById('inv_type').value; 
+    const rawName = document.getElementById('inv_name').value; 
+    // Limpeza de valor segura
+    const balanceVal = document.getElementById('inv_balance').value;
+    const balance = parseFloat(balanceVal.replace(/\./g, '').replace(',', '.'));
+    
+    const fullName = `${type} | ${rawName}`; 
+    
+    // Data de Referência: Sempre o dia 01 do mês que está NO DASHBOARD
+    const refDate = `${currentDashboardDate.getFullYear()}-${String(currentDashboardDate.getMonth()+1).padStart(2,'0')}-01`; 
+
+    if(!editingInvestmentId){ 
+        // CRIAR NOVO
+        const{data, error} = await supabaseClient.from('accounts')
+            .insert([{name:fullName, type:'investment', initial_balance:balance, user_id:user.id}])
+            .select(); 
+        
+        if(error){ alert("Erro: "+error.message); return; } 
+        
+        // Cria histórico para o mês atual
+        await supabaseClient.from('asset_history').insert([{
+            account_id: data[0].id,
+            user_id: user.id,
+            amount: balance,
+            reference_date: refDate
+        }]);
+
+    } else { 
+        // EDITAR EXISTENTE
+        
+        // 1. Atualiza o nome na conta principal (se mudou)
+        await supabaseClient.from('accounts')
+            .update({ name:fullName }) // Não atualizamos o saldo aqui para não quebrar a lógica de histórico
+            .eq('id', editingInvestmentId); 
+        
+        // 2. Salva/Atualiza o histórico DO MÊS SELECIONADO
+        await supabaseClient.from('asset_history').upsert([{
+            account_id: editingInvestmentId,
+            user_id: user.id,
+            amount: balance,
+            reference_date: refDate
+        }], { onConflict: 'account_id, reference_date' });
+    } 
+    
+    window.hideModal('modal-investment-overlay'); 
+    fetchInvestments(); 
+    renderInvestmentChart(user.id);
+});
+window.removeInv=async(id)=>{if(confirm('Apagar?')){await supabaseClient.from('accounts').delete().eq('id',id); fetchInvestments()}}
+window.openCategoryModal=()=>{editingCategoryId=null;document.getElementById('form-category').reset();window.showModal('modal-category-overlay')}; window.closeCategoryModal=()=>window.hideModal('modal-category-overlay')
+document.getElementById('form-category').addEventListener('submit', async(e)=>{ e.preventDefault(); const user=(await supabaseClient.auth.getUser()).data.user; const data={name:document.getElementById('cat_name').value, icon:document.getElementById('cat_icon').value, user_id:user.id, is_default:false, type:'expense'}; if(editingCategoryId) await supabaseClient.from('categories').update(data).eq('id',editingCategoryId); else await supabaseClient.from('categories').insert([data]); window.hideModal('modal-category-overlay'); fetchCategories(); loadDropdowns(user.id) })
+window.removeCat=async(id)=>{if(confirm('Apagar?')){const{error}=await supabaseClient.from('categories').delete().eq('id',id); if(error)alert("Em uso."); else fetchCategories()}}
+async function fetchCategories() { const { data: { user } } = await supabaseClient.auth.getUser(); const { data: cats } = await supabaseClient.from('categories').select('*').or(`user_id.eq.${user.id},is_default.eq.true`); globalCategories = cats; const grid = document.getElementById('categories-list'); grid.innerHTML = ''; cats.forEach(c => { const btns = c.is_default ? '' : `<div class="action-buttons"><button class="action-btn delete" onclick="removeCat(${c.id})"><i class="fa-solid fa-trash"></i></button></div>`; grid.innerHTML += `<div class="category-card"><div style="display:flex;align-items:center;gap:12px"><div style="background:#f1f5f9;color:var(--primary);width:35px;height:35px;display:flex;align-items:center;justify-content:center;border-radius:8px"><i class="fa-solid ${c.icon||'fa-tag'}"></i></div><strong>${c.name}</strong></div>${btns}</div>` }) }
+window.openGoalModal=async()=>{document.getElementById('form-goal').reset(); const user=(await supabaseClient.auth.getUser()).data.user; const {data:cats}=await supabaseClient.from('categories').select('*').or(`user_id.eq.${user.id},is_default.eq.true`); const sel=document.getElementById('goal_category'); sel.innerHTML=''; cats.forEach(c=>sel.innerHTML+=`<option value="${c.id}">${c.name}</option>`); window.showModal('modal-goal-overlay')}
+window.closeGoalModal=()=>window.hideModal('modal-goal-overlay')
+document.getElementById('form-goal').addEventListener('submit', async(e)=>{ e.preventDefault(); const user=(await supabaseClient.auth.getUser()).data.user; const catId=document.getElementById('goal_category').value; const amount=parseFloat(document.getElementById('goal_amount').value.replace(/\./g, '').replace(',', '.')); await supabaseClient.from('goals').delete().eq('user_id',user.id).eq('category_id',catId); await supabaseClient.from('goals').insert([{user_id:user.id, category_id:catId, target_amount:amount}]); window.hideModal('modal-goal-overlay'); fetchGoals(user.id) })
+async function fetchGoals(userId) { const list = document.getElementById('goals-list-widget'); if(!list) return; const { data: goals } = await supabaseClient.from('goals').select(`*, categories(name)`).eq('user_id', userId); if(!goals || goals.length === 0) { list.innerHTML = '<small style="color:#94a3b8">Nenhuma meta definida.</small>'; return; } const year = currentDashboardDate.getFullYear(); const month = currentDashboardDate.getMonth(); const start = new Date(year, month, 1).toISOString(); const end = new Date(year, month + 1, 0).toISOString(); const { data: expenses } = await supabaseClient.from('transactions').select('amount, category_id').eq('user_id', userId).eq('type', 'expense').gte('date', start).lte('date', end); list.innerHTML = ''; goals.forEach(g => { const spent = expenses.filter(e => e.category_id === g.category_id).reduce((acc, curr) => acc + curr.amount, 0); const percent = Math.min((spent / g.target_amount) * 100, 100); let color = '#10b981'; if(percent > 75) color = '#f59e0b'; if(percent >= 100) color = '#ef4444'; list.innerHTML += `<div class="goal-item" style="margin-bottom:15px"><div style="display:flex; justify-content:space-between; font-size:0.8rem; font-weight:700; margin-bottom:5px; color:var(--text-muted)"><span>${g.categories.name}</span><span>${Math.round(percent)}%</span></div><div class="progress-bg"><div class="progress-fill" style="width:${percent}%; background:${color}"></div></div><div style="display:flex; justify-content:space-between; font-size:0.7rem; margin-top:3px; color:#94a3b8"><span>R$ ${spent.toLocaleString('pt-br')}</span><span>Meta: R$ ${g.target_amount.toLocaleString('pt-br')}</span></div></div>`; }); }
+async function processFixedExpenses(userId) { const targetDate = new Date(currentDashboardDate); const targetMonth = targetDate.getMonth(), targetYear = targetDate.getFullYear(); const { data: fixedOps } = await supabaseClient.from('transactions').select('*').eq('user_id', userId).eq('is_fixed', true); if (!fixedOps || fixedOps.length === 0) return; for (const op of fixedOps) { const opDate = new Date(op.date + 'T00:00:00'); if (opDate.getMonth() === targetMonth && opDate.getFullYear() === targetYear) continue; if (opDate > new Date(targetYear, targetMonth + 1, 0)) continue; const startOfMonth = new Date(targetYear, targetMonth, 1).toISOString(); const endOfMonth = new Date(targetYear, targetMonth + 1, 0).toISOString(); const { data: duplicates } = await supabaseClient.from('transactions').select('id').eq('description', op.description).gte('date', startOfMonth).lte('date', endOfMonth); if (duplicates.length === 0) { const originalDay = opDate.getDate(); const lastDayOfTargetMonth = new Date(targetYear, targetMonth + 1, 0).getDate(); const newDate = new Date(targetYear, targetMonth, Math.min(originalDay, lastDayOfTargetMonth)); await supabaseClient.from('transactions').insert([{ description: op.description, amount: op.amount, type: op.type, category_id: op.category_id, account_id: op.account_id, payment_method: op.payment_method, user_id: userId, is_paid: false, date: newDate.toISOString().split('T')[0], credit_card_id: op.credit_card_id, is_fixed: false }]) } } }
+
+// INICIALIZAÇÃO
+setupEventListeners();
+checkUser();

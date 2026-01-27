@@ -1,97 +1,177 @@
 <!DOCTYPE html>
-<html lang="pt-br">
+<html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>My Finance • Organizado</title>
+    <title>My Finance</title>
     
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <link rel="stylesheet" href="style.css">
     
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-
-    <link rel="stylesheet" href="style.css">
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 </head>
+
 <body>
 
-  <div id="login-screen" class="login-container">
+    <div id="login-screen" class="login-container">
         <div class="login-box">
-            <div class="logo-icon"><i class="fa-solid fa-rocket"></i></div>
-            <h1 class="logo-text" style="font-size: 2rem; margin-bottom: 5px;">My Finance</h1>
-            <p class="subtitle" style="margin-bottom: 30px;">Decole suas finanças.</p>
+            <div style="font-size:3rem; color:var(--primary); margin-bottom:10px"><i class="fa-solid fa-rocket"></i></div>
+            <h2 style="margin-bottom:5px">Bem-vindo!</h2>
+            <p style="color:#6b7280; margin-bottom:30px">Gerencie suas finanças de forma inteligente.</p>
             
             <div class="input-group">
-                <input type="email" id="email" placeholder="seu@email.com" style="background:#f8fafc;">
+                <input type="email" id="email" placeholder="Seu email">
             </div>
             <div class="input-group">
-                <input type="password" id="password" placeholder="Sua senha" style="background:#f8fafc;">
+                <input type="password" id="password" placeholder="Sua senha">
             </div>
             
-            <button id="btnLogin" class="btn-submit" style="background: linear-gradient(90deg, #0ea5e9, #2563eb); border:none;">ACESSAR PAINEL</button>
-            <button id="btnRegister" class="btn-text" style="font-size:0.8rem; margin-top:20px">Não tem conta? Cadastre-se</button>
+            <button id="btnLogin" class="btn-submit">Entrar</button>
         </div>
     </div>
 
-    <div id="app-layout" class="app-layout hidden">
+    <div class="mobile-header">
+        <div class="brand-mobile">
+            <i class="fa-solid fa-rocket"></i> My Finance
+        </div>
+        <button onclick="toggleSidebar()" class="mobile-menu-btn">
+            <i class="fa-solid fa-bars"></i>
+        </button>
+    </div>
+
+    <div id="sidebar-overlay" onclick="toggleSidebar()" class="sidebar-overlay hidden"></div>
+
+    <div id="app-layout" class="hidden">
         
         <aside class="sidebar">
-            <div class="brand"><i class="fa-solid fa-wallet"></i> My Finance</div>
-            <nav>
-                <div class="nav-item active" onclick="showSection('dashboard')"><i class="fa-solid fa-chart-pie"></i> Visão Geral</div>
-                <div class="nav-item" onclick="showSection('transactions')"><i class="fa-solid fa-list"></i> Extrato</div>
-                <div class="nav-item" onclick="showSection('cards')"><i class="fa-solid fa-credit-card"></i> Cartões</div>
-                <div class="nav-item" onclick="showSection('investments')"><i class="fa-solid fa-chart-line"></i> Investimentos</div>
-                <div class="nav-item" onclick="showSection('categories')"><i class="fa-solid fa-tags"></i> Categorias</div>
+            <div class="brand">
+                <i class="fa-solid fa-rocket"></i> My Finance
+            </div>
+            
+            <nav style="flex:1">
+                <div class="nav-item active" onclick="showSection('dashboard')">
+                    <i class="fa-solid fa-chart-line"></i> Visão Geral
+                </div>
+                <div class="nav-item" onclick="showSection('transactions')">
+                    <i class="fa-solid fa-list"></i> Extrato
+                </div>
+                <div class="nav-item" onclick="showSection('cards')">
+                    <i class="fa-solid fa-credit-card"></i> Cartões
+                </div>
+                <div class="nav-item" onclick="showSection('investments')">
+                    <i class="fa-solid fa-piggy-bank"></i> Investimentos
+                </div>
+                <div class="nav-item" onclick="showSection('categories')">
+                    <i class="fa-solid fa-tags"></i> Categorias
+                </div>
             </nav>
-            <div class="user-area">
-                <small id="user-email">Carregando...</small>
-                <button id="btnLogout">Sair</button>
+    
+            <div class="user-profile">
+                <small style="display:block; color:var(--text-muted); margin-bottom:5px">Logado como:</small>
+                <strong id="user-email" style="font-size:0.85rem; display:block; margin-bottom:20px; overflow:hidden; text-overflow:ellipsis">...</strong>
+                
+                <button onclick="toggleTheme()" style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:0.9rem; display:flex; align-items:center; gap:12px; margin-bottom:12px; padding:0; width:100%; text-align:left; transition: color 0.2s" onmouseover="this.style.color='var(--primary)'" onmouseout="this.style.color='var(--text-muted)'">
+                    <div style="width:20px; text-align:center"><i id="theme-icon" class="fa-solid fa-moon"></i></div>
+                    <span id="theme-text">Modo Escuro</span>
+                </button>
+
+                <button id="btnLogout" style="background:none; border:none; color:var(--danger); cursor:pointer; font-size:0.9rem; display:flex; align-items:center; gap:12px; padding:0; width:100%; text-align:left">
+                    <div style="width:20px; text-align:center"><i class="fa-solid fa-right-from-bracket"></i></div>
+                    <span>Sair</span>
+                </button>
             </div>
         </aside>
-
-        <main class="content">
-            <header class="top-bar">
-                <h2 id="page-title">Visão Geral</h2>
-                <button id="global-btn" class="btn-primary" onclick="openModal()"><i class="fa-solid fa-plus"></i> Transação</button>
-            </header>
-
-         <section id="view-dashboard" class="view-section">
     
-    <div class="month-navigator">
-        <button onclick="changeMonth(-1)"><i class="fa-solid fa-chevron-left"></i></button>
-        <span id="current-month-display">MÊS ATUAL</span>
-        <button onclick="changeMonth(1)"><i class="fa-solid fa-chevron-right"></i></button>
-    </div>
+        <main class="main-content">
+            
+            <section id="view-dashboard" class="view-section">
+                <div class="welcome-header">
+                    <div class="welcome-text">
+                        <p id="welcome-greeting" style="font-size:1.1rem; color:var(--text-muted); margin-bottom:0">👋 Olá,</p>
+                        <h2 id="user-name-display" style="color:var(--text-main); margin-top:0">Heitor Novaes</h2>
+                    </div>
+                    <div class="month-navigator">
+                        <button onclick="changeMonth(-1)"><i class="fa-solid fa-chevron-left"></i></button>
+                        <span id="current-month-display" style="font-weight:700; min-width:120px; text-align:center">MÊS ATUAL</span>
+                        <button onclick="changeMonth(1)"><i class="fa-solid fa-chevron-right"></i></button>
+                    </div>
+                </div>
+    
+                <div class="dashboard-grid">
+                    <div class="dashboard-left">
+                        
+                        <div class="card">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px">
+                                <h4 style="margin:0; color:var(--text-muted); font-size:0.8rem; letter-spacing:1px">MINHAS CONTAS</h4>
+                                <button onclick="openAccountModal()" style="background:none; border:none; color:var(--primary); cursor:pointer; font-size:1.2rem"><i class="fa-solid fa-circle-plus"></i></button>
+                            </div>
+                            
+                            <div id="accounts-list-widget"><small>Carregando...</small></div>
+                            
+                            <div style="margin-top:20px; padding-top:15px; border-top:1px solid #f3f4f6; display:flex; justify-content:space-between">
+                                <span style="font-weight:600; color:var(--text-muted)">Saldo Total</span>
+                                <span id="total-accounts-balance" style="font-weight:800; color:var(--text-main)">R$ 0,00</span>
+                            </div>
+                        </div>
+                        
+                        <div class="card">
+                            <h4 style="margin-bottom:15px; color:var(--text-muted); font-size:0.8rem; letter-spacing:1px">ACESSO RÁPIDO</h4>
+                            <div style="display:flex; gap:10px;">
+                                <button onclick="openModal('expense')" style="flex:1; padding:15px; border:none; background:#ecfdf5; color:var(--primary); border-radius:15px; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:5px">
+                                    <i class="fa-solid fa-circle-minus" style="font-size:1.5rem"></i> <span style="font-size:0.8rem; font-weight:600">Despesa</span>
+                                </button>
+                                <button onclick="openModal('income')" style="flex:1; padding:15px; border:none; background:#eff6ff; color:var(--secondary); border-radius:15px; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:5px">
+                                    <i class="fa-solid fa-circle-plus" style="font-size:1.5rem"></i> <span style="font-size:0.8rem; font-weight:600">Receita</span>
+                                </button>
+                            </div>
+                        </div>
+    
+                        <div class="card">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px">
+                                <h4 style="margin:0; color:var(--text-muted); font-size:0.8rem; letter-spacing:1px">ORÇAMENTOS / METAS</h4>
+                                <button onclick="openGoalModal()" style="background:none; border:none; color:var(--primary); cursor:pointer; font-size:1.2rem"><i class="fa-solid fa-circle-plus"></i></button>
+                            </div>
+                            <div id="goals-list-widget">
+                                <small style="color:#cbd5e1">Nenhuma meta definida.</small>
+                            </div>
+                        </div>
+                    </div>
+    
+                   <div class="dashboard-main">
 
-    <div class="summary-cards">
-        <div class="card summary-card card-blue">
-            <i class="fa-solid fa-wallet icon-bg"></i>
-            <small>Saldo Total</small>
-            <h3 id="display-total">R$ 0,00</h3>
+    <div class="summary-grid">
+        <div class="summary-card card-green" style="position:relative; overflow:hidden; min-height:140px">
+            <i class="fa-solid fa-circle-arrow-up" style="opacity:0.15; position:absolute; right:-15px; bottom:-15px; font-size:5rem"></i>
+            <small style="font-weight:700; opacity:0.9; font-size:0.8rem">RECEITAS</small>
+            <h3 id="display-income" style="font-size:1.8rem; margin-top:10px; font-weight:800">R$ 0,00</h3>
         </div>
-        <div class="card summary-card card-green">
-            <i class="fa-solid fa-arrow-trend-up icon-bg"></i>
-            <small>Receitas</small>
-            <h3 id="display-income">R$ 0,00</h3>
+
+        <div class="summary-card card-red" style="position:relative; overflow:hidden; min-height:140px">
+            <i class="fa-solid fa-circle-arrow-down" style="opacity:0.15; position:absolute; right:-15px; bottom:-15px; font-size:5rem"></i>
+            <small style="font-weight:700; opacity:0.9; font-size:0.8rem">DESPESAS</small>
+            <h3 id="display-expense" style="font-size:1.8rem; margin-top:10px; font-weight:800">R$ 0,00</h3>
         </div>
-        <div class="card summary-card card-red">
-            <i class="fa-solid fa-arrow-trend-down icon-bg"></i>
-            <small>Despesas</small>
-            <h3 id="display-expense">R$ 0,00</h3>
+
+        <div class="summary-card" id="card-balance-bg" style="background:#eff6ff; color:#1e40af; position:relative; overflow:hidden; min-height:140px">
+            <i class="fa-solid fa-wallet" style="opacity:0.15; position:absolute; right:-10px; bottom:-15px; font-size:4.5rem"></i>
+            <small style="font-weight:700; opacity:0.9; font-size:0.8rem">SALDO MENSAL</small>
+            <h3 id="display-balance" style="font-size:1.8rem; margin-top:10px; font-weight:800">R$ 0,00</h3>
         </div>
     </div>
 
     <div class="charts-row">
-        <div class="chart-box">
-            <h4><i class="fa-solid fa-chart-pie"></i> Despesas do Mês</h4>
+        <div class="chart-box" style="height:350px">
+            <h4 style="margin-bottom:15px">Despesas por Categoria</h4>
             <div class="canvas-container">
                 <canvas id="expenseChart"></canvas>
             </div>
         </div>
-
-        <div class="chart-box">
-            <h4><i class="fa-solid fa-chart-line"></i> Evolução Investimentos</h4>
+        
+        <div class="chart-box" style="height:350px">
+            <h4 style="margin-bottom:15px">Evolução Patrimonial</h4>
             <div class="canvas-container">
                 <canvas id="investmentChart"></canvas>
             </div>
@@ -99,143 +179,328 @@
     </div>
 
     <div class="recent-transactions-full">
-        <h4 style="margin-bottom:20px; color:var(--text-main)">Últimas Movimentações</h4>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+            <h4 style="margin:0; font-size:0.9rem; color:var(--text-muted)">ÚLTIMAS MOVIMENTAÇÕES</h4>
+            <button onclick="showSection('transactions')" style="background:none; border:none; color:var(--primary); cursor:pointer; font-size:0.85rem; font-weight:600;">Ver Extrato Completo</button>
+        </div>
         <ul id="transactions-preview"></ul>
     </div>
 
-</section>
-
-           <section id="view-transactions" class="view-section hidden">
-    
-    <div class="month-navigator" style="margin-bottom: 20px;">
-        <button onclick="changeMonth(-1)"><i class="fa-solid fa-chevron-left"></i></button>
-        <span id="current-month-display-extrato" style="text-transform:uppercase; font-weight:600; min-width:140px; text-align:center">MÊS ATUAL</span>
-        <button onclick="changeMonth(1)"><i class="fa-solid fa-chevron-right"></i></button>
-    </div>
-
-    <div class="card">
-        <ul id="transactions-full"></ul>
-    </div>
-</section>
-
-           <section id="view-cards" class="view-section hidden">
-    
-    <div class="month-navigator">
-        <button onclick="changeMonth(-1)"><i class="fa-solid fa-chevron-left"></i></button>
-        <span id="current-month-display-cards" style="text-transform:uppercase; font-weight:600; min-width:140px; text-align:center">MÊS ATUAL</span>
-        <button onclick="changeMonth(1)"><i class="fa-solid fa-chevron-right"></i></button>
-    </div>
-
-    <div class="header-action" style="margin-top: 20px;">
-        <button class="btn-primary" onclick="openCardModal()">+ Cartão</button>
-    </div>
-    
-    <div id="cards-grid" class="cards-grid"></div>
-</section>
-
-          <section id="view-investments" class="view-section hidden">
-        <div class="month-navigator" style="margin-bottom: 20px;">
-        <button onclick="changeMonth(-1)"><i class="fa-solid fa-chevron-left"></i></button>
-        <span id="current-month-display-invest" style="text-transform:uppercase; font-weight:600; min-width:140px; text-align:center">MÊS ATUAL</span>
-        <button onclick="changeMonth(1)"><i class="fa-solid fa-chevron-right"></i></button>
-    </div>
-
-    <div class="header-action">
-        <button class="btn-primary" onclick="openInvestmentModal()">+ Novo Aporte</button>
-    </div>
-        
-        <div class="invest-dashboard">
-            <div class="invest-summary-card">
-                <i class="fa-solid fa-sack-dollar icon-bg" style="position:absolute; right:-20px; bottom:-20px; font-size:8rem; opacity:0.2;"></i>
-                <small style="font-size: 0.9rem; opacity: 0.9; text-transform: uppercase; letter-spacing: 1px;">Patrimônio Total</small>
-                <h3 id="total-invested" style="font-size: 2.8rem; margin-top: 10px;">R$ 0,00</h3>
-                <p style="opacity: 0.8; margin-top: 5px; font-size: 0.9rem;">Rendendo acima da inflação 🚀</p>
-            </div>
-
-            <div class="invest-chart-wrapper">
-                <h4 style="width:100%; text-align:left; margin-bottom:10px; color:var(--text-muted); font-size:0.9rem"><i class="fa-solid fa-chart-pie"></i> Alocação da Carteira</h4>
-                <div style="flex:1; width:100%; position:relative;">
-                    <canvas id="allocationChart"></canvas>
+</div>
                 </div>
-            </div>
-        </div>
-
-        <h4 style="margin-bottom: 20px; color: var(--text-main);">Meus Ativos</h4>
-        <div id="investments-grid" class="cards-grid"></div>
-    </section>
-
-            <section id="view-categories" class="view-section hidden">
-                <div class="header-action"><button class="btn-primary" onclick="openCategoryModal()">+ Categoria</button></div>
-                <div id="categories-list" class="cards-grid"></div>
             </section>
+    
+            <section id="view-transactions" class="view-section hidden">
+                <div class="header-action">
+                    <h2 style="margin-right:auto">Extrato</h2>
+                    <div class="month-navigator">
+                        <button onclick="changeMonth(-1)"><i class="fa-solid fa-chevron-left"></i></button>
+                        <span id="current-month-display-extrato">MÊS</span>
+                        <button onclick="changeMonth(1)"><i class="fa-solid fa-chevron-right"></i></button>
+                    </div>
+                </div>
+
+                <div class="filter-container">
+                    <div class="search-box">
+                        <i class="fa-solid fa-magnifying-glass"></i>
+                        <input type="text" id="trans-search" placeholder="Buscar (ex: Uber, Mercado...)" onkeyup="applyFilters()">
+                    </div>
+
+                    <div class="filter-buttons">
+                        <button class="filter-btn active" onclick="setFilter('all', this)">Todos</button>
+                        <button class="filter-btn" onclick="setFilter('income', this)">Entradas</button>
+                        <button class="filter-btn" onclick="setFilter('expense', this)">Saídas</button>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <ul id="transactions-full"></ul>
+                    <div id="no-results" class="hidden" style="text-align:center; padding:20px; color:#94a3b8">
+                        <i class="fa-solid fa-filter-circle-xmark" style="font-size:2rem; margin-bottom:10px"></i>
+                        <p>Nenhuma transação encontrada.</p>
+                    </div>
+                </div>
+            </section>
+    
+            <section id="view-cards" class="view-section hidden">
+                <div class="header-action">
+                    <h2 style="margin-right:auto">Meus Cartões</h2>
+                    <div class="month-navigator">
+                        <button onclick="changeMonth(-1)"><i class="fa-solid fa-chevron-left"></i></button>
+                        <span id="current-month-display-cards">MÊS</span>
+                        <button onclick="changeMonth(1)"><i class="fa-solid fa-chevron-right"></i></button>
+                    </div>
+                    <button class="btn-primary" onclick="openCardModal()">+ Cartão</button>
+                </div>
+                <div id="cards-grid" class="cards-grid"></div>
+            </section>
+            
+            <section id="view-investments" class="view-section hidden">
+                 <div class="header-action">
+                    <h2 style="margin-right:auto">Investimentos</h2>
+                     <div class="month-navigator">
+                        <button onclick="changeMonth(-1)"><i class="fa-solid fa-chevron-left"></i></button>
+                        <span id="current-month-display-invest">MÊS</span>
+                        <button onclick="changeMonth(1)"><i class="fa-solid fa-chevron-right"></i></button>
+                    </div>
+                    <button class="btn-primary" onclick="openInvestmentModal()">+ Aporte</button>
+                </div>
+                <div id="investments-grid" class="cards-grid"></div>
+            </section>
+    
+            <section id="view-categories" class="view-section hidden">
+                <div class="header-action">
+                     <h2 style="margin-right:auto">Categorias</h2>
+                     <button class="btn-primary" onclick="openCategoryModal()">+ Categoria</button>
+                </div>
+                <div id="categories-list" class="cards-grid" style="grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));"></div>
+            </section>
+    
         </main>
     </div>
 
     <div id="modal-overlay" class="modal-overlay hidden">
-        <div class="modal">
-            <div class="modal-header"><h3>Transação</h3><button onclick="closeModal()">✖</button></div>
+        <div class="modal-pro">
             <form id="form">
-                <div class="form-row"><input id="description" placeholder="Descrição" required><input id="amount" placeholder="R$ 0,00" required></div>
-                <div class="form-row">
-                    <select id="type"><option value="expense">Despesa</option><option value="income">Receita</option></select>
-                    <input type="date" id="date" required>
+                <div class="modal-header-pro">
+                    <h3 style="margin:0; font-size:1.2rem">Nova Movimentação</h3>
+                    <button type="button" onclick="closeModal()" style="border:none; background:none; font-size:1.2rem; cursor:pointer; color:#94a3b8"><i class="fa-solid fa-xmark"></i></button>
                 </div>
-                <div class="form-row"><select id="category" required></select><select id="account" required></select></div>
-                
-                <div class="form-row"><select id="payment_method" onchange="toggleCardInput()"><option value="cash">Dinheiro</option><option value="credit_card">Cartão de Crédito</option></select></div>
-                
-                <div id="credit_card_options" class="hidden box-options">
-                    <select id="credit_card_select"></select>
-                    <div class="check-group">
-                        <label><input type="checkbox" id="is_installment" onchange="toggleInstallments()"> Parcelado?</label>
-                        <input type="number" id="installments_count" placeholder="Qtd" class="hidden" min="2" style="width: 80px;">
+
+                <div class="modal-body-pro">
+                    <div class="type-toggle-group">
+                        <button type="button" class="type-toggle active-expense" id="btn-type-expense" onclick="setType('expense')">
+                            <i class="fa-solid fa-circle-minus"></i> Despesa
+                        </button>
+                        <button type="button" class="type-toggle" id="btn-type-income" onclick="setType('income')">
+                            <i class="fa-solid fa-circle-plus"></i> Receita
+                        </button>
+                        <input type="hidden" id="type" value="expense">
+                    </div>
+
+                    <div style="position:relative">
+                        <label class="input-label">Valor da Transação</label>
+                        <div style="position:absolute; left:15px; top:38px; font-weight:bold; color:#64748b">R$</div>
+                        <input type="text" id="amount" required onkeyup="formatCurrency(this)" class="input-field" style="padding-left:45px; font-size:1.3rem; font-weight:700; color:var(--text-main)" placeholder="0,00">
+                    </div>
+
+                    <div>
+                        <label class="input-label">Descrição</label>
+                        <input type="text" id="description" class="input-field" placeholder="Ex: Compras no mercado" required>
+                    </div>
+
+                    <div class="form-row">
+                        <div>
+                            <label class="input-label">Data</label>
+                            <input type="date" id="date" class="input-field" required>
+                        </div>
+                        <div>
+                            <label class="input-label">Categoria</label>
+                            <select id="category" class="input-field" required></select>
+                        </div>
+                        <div>
+                            <label class="input-label">Conta / Carteira</label>
+                            <select id="account" class="input-field" required>
+                                <option value="">Carregando...</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Método de Pagamento</label>
+                        <select id="transaction-payment-method" class="input-field">
+                            <option value="debit">Débito / Dinheiro</option>
+                            <option value="credit_card">Cartão de Crédito</option>
+                        </select>
+                    </div>
+
+                    <div id="card-select-container" class="form-group hidden"> 
+                        <label>Selecione o Cartão</label>
+                        <select id="transaction-card-input" class="input-field">
+                            <option value="">Selecione o método primeiro...</option>
+                        </select>
+                    </div>
+
+                    <div id="options-row" style="display:flex; justify-content:space-between; align-items:center; background:#f8fafc; padding:15px; border-radius:10px; border:1px solid #e2e8f0; margin-top:15px">
+                        <div style="display:flex; gap:15px;">
+                            <div><input type="checkbox" id="check-paid"> <label>Pago?</label></div>
+                            <div><input type="checkbox" id="check-fixed"> <label>Fixo Mensal?</label></div>
+                            <div id="installments-wrapper" class="hidden" style="display:flex; align-items:center; gap:10px;">
+                                <div style="display:flex; align-items:center; gap:5px">
+                                    <input type="checkbox" id="check-installments" onchange="toggleInstallmentInput()"> 
+                                    <label for="check-installments">Parcelar?</label>
+                                </div>
+                                <input type="number" id="installments-count" class="input-field hidden" placeholder="Qtd" min="2" max="36" style="width:80px; padding:5px;">
+                            </div>
+                        </div>
                     </div>
                 </div>
 
-                <div class="form-row mt-10">
-                    <label class="check-label"><input type="checkbox" id="is_fixed"> Fixa (Mensal)</label>
-                    <label class="check-label ml-15"><input type="checkbox" id="is_paid" checked> Já Pago</label>
+                <div class="modal-footer-pro">
+                    <button type="button" onclick="closeModal()" class="btn-cancel">Cancelar</button>
+                    <button type="submit" class="btn-submit">Salvar</button>
                 </div>
-                <button type="submit" class="btn-submit">Salvar</button>
             </form>
         </div>
     </div>
 
     <div id="modal-card-overlay" class="modal-overlay hidden">
-        <div class="modal">
-            <div class="modal-header"><h3>Cartão</h3><button onclick="closeCardModal()">✖</button></div>
+        <div class="modal-content">
+            <h3>Gerenciar Cartão</h3>
             <form id="form-card">
-                <input id="card_name" placeholder="Nome" required>
-                <input id="card_limit" placeholder="Limite" required>
-                <div class="form-row"><input id="card_close" placeholder="Fechamento (dia)" required><input id="card_due" placeholder="Vencimento (dia)" required></div>
-                <button type="submit" class="btn-submit">Salvar</button>
+                <div class="input-group">
+                    <label>Nome do Cartão</label>
+                    <input type="text" id="card_name" placeholder="Ex: Nubank" required>
+                </div>
+                
+                <div class="input-group">
+                    <label>Limite (R$)</label>
+                    <input type="text" id="card_limit" required onkeyup="formatCurrency(this)">
+                </div>
+                
+                <div style="display:flex; gap:15px; margin-top:15px;">
+                    <div class="input-group">
+                        <label>Fechamento (Dia)</label>
+                        <input type="number" id="card_close" min="1" max="31" required placeholder="05">
+                    </div>
+                    <div class="input-group">
+                        <label>Vencimento (Dia)</label>
+                        <input type="number" id="card_due" min="1" max="31" required placeholder="10">
+                    </div>
+                </div>
+                
+                <div style="margin-top:25px; display:flex; gap:10px">
+                    <button type="button" onclick="closeCardModal()" class="btn-cancel">Cancelar</button>
+                    <button type="submit" class="btn-submit">Salvar Cartão</button>
+                </div>
             </form>
         </div>
     </div>
 
     <div id="modal-investment-overlay" class="modal-overlay hidden">
-        <div class="modal">
-            <div class="modal-header"><h3>Investimento</h3><button onclick="closeInvestmentModal()">✖</button></div>
+        <div class="modal-pro" style="max-width: 500px;"> 
             <form id="form-investment">
-                <input id="inv_name" placeholder="Nome" required>
-                <select id="inv_type"><option value="Renda Fixa">Renda Fixa</option><option value="Ações">Ações</option><option value="Cripto">Criptomoedas</option></select>
-                <input id="inv_balance" placeholder="Valor Atual" required>
-                <button type="submit" class="btn-submit">Salvar</button>
+                <div class="modal-header-pro">
+                    <h3 style="margin:0; font-size:1.2rem">Gerenciar Ativo</h3>
+                    <button type="button" onclick="closeInvestmentModal()" style="border:none; background:none; font-size:1.2rem; cursor:pointer; color:#94a3b8"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+
+                <div class="modal-body-pro">
+                    <div>
+                        <label class="input-label">Tipo de Investimento</label>
+                        <select id="inv_type" class="input-field">
+                            <option value="Renda Fixa">💰 Renda Fixa (CDB, Tesouro)</option>
+                            <option value="Ações">📈 Ações / FIIs</option>
+                            <option value="Cripto">₿ Criptomoedas</option>
+                            <option value="Reserva">🛡️ Reserva de Emergência</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="input-label">Nome do Ativo</label>
+                        <input type="text" id="inv_name" class="input-field" placeholder="Ex: CDB Banco Inter, Bitcoin..." required>
+                    </div>
+
+                    <div style="background:#f0fdf4; padding:15px; border-radius:12px; border:1px solid #bbf7d0">
+                        <label class="input-label" style="color:#166534">Saldo Atualizado (Hoje)</label>
+                        <div style="position:relative">
+                            <span style="position:absolute; left:15px; top:12px; font-weight:bold; color:#166534">R$</span>
+                            <input type="text" id="inv_balance" required onkeyup="formatCurrency(this)" class="input-field" style="padding-left:45px; background:white; border-color:#bbf7d0; font-weight:700; color:#15803d; font-size:1.2rem">
+                        </div>
+                        <small style="display:block; margin-top:5px; color:#166534; font-size:0.75rem">
+                            <i class="fa-solid fa-circle-info"></i> Isso atualizará seu gráfico de patrimônio histórico.
+                        </small>
+                    </div>
+                </div>
+
+                <div class="modal-footer-pro">
+                    <button type="button" onclick="closeInvestmentModal()" class="btn-cancel">Cancelar</button>
+                    <button type="submit" class="btn-submit">Salvar Posição</button>
+                </div>
             </form>
         </div>
     </div>
 
     <div id="modal-category-overlay" class="modal-overlay hidden">
-        <div class="modal">
-            <div class="modal-header"><h3>Categoria</h3><button onclick="closeCategoryModal()">✖</button></div>
+        <div class="modal-pro" style="max-width: 400px;">
             <form id="form-category">
-                <input id="cat_name" placeholder="Nome" required>
-                <select id="cat_icon"><option value="fa-tag">Geral</option><option value="fa-cart-shopping">Mercado</option><option value="fa-car">Carro</option><option value="fa-house">Casa</option></select>
-                <button type="submit" class="btn-submit">Salvar</button>
+                <div class="modal-header-pro">
+                    <h3 style="margin:0; font-size:1.2rem">Nova Categoria</h3>
+                    <button type="button" onclick="closeCategoryModal()" style="border:none; background:none; font-size:1.2rem; cursor:pointer; color:#94a3b8"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+                <div class="modal-body-pro">
+                    <div>
+                        <label class="input-label">Nome da Categoria</label>
+                        <input type="text" id="cat_name" class="input-field" placeholder="Ex: Mercado, Lazer..." required>
+                    </div>
+                    <div>
+                        <label class="input-label">Escolha um Ícone</label>
+                        <div id="icon-selector-grid" class="icon-grid"></div>
+                        <input type="hidden" id="cat_icon" value="fa-tag">
+                    </div>
+                </div>
+                <div class="modal-footer-pro">
+                    <button type="button" onclick="closeCategoryModal()" class="btn-cancel">Cancelar</button>
+                    <button type="submit" class="btn-submit">Salvar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="modal-goal-overlay" class="modal-overlay hidden">
+        <div class="modal-content">
+            <h3 style="margin-bottom:20px">Nova Meta de Gasto</h3>
+            <form id="form-goal">
+                <div class="input-group">
+                    <label>Categoria</label>
+                    <select id="goal_category" required style="width:100%; padding:12px; border-radius:10px; border:1px solid #e5e7eb"></select>
+                </div>
+                <div class="input-group" style="margin-top:15px">
+                    <label>Limite Mensal (R$)</label>
+                    <input type="text" id="goal_amount" placeholder="Ex: 500,00" required onkeyup="formatCurrency(this)" style="width:100%; padding:12px; border-radius:10px; border:1px solid #e5e7eb">
+                </div>
+                <div style="margin-top:20px; display:flex; gap:10px">
+                    <button type="button" onclick="closeGoalModal()" class="btn-cancel">Cancelar</button>
+                    <button type="submit" class="btn-submit">Salvar Meta</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="modal-account-overlay" class="modal-overlay hidden">
+        <div class="modal-content">
+            <h3 style="margin-bottom:20px">Nova Conta / Carteira</h3>
+            <p style="font-size:0.85rem; color:#64748b; margin-bottom:15px">Cadastre saldos em conta corrente ou dinheiro em espécie.</p>
+            
+            <form id="form-account">
+                <div class="input-group">
+                    <label>Nome do Banco/Conta</label>
+                    <input type="text" id="acc_name" placeholder="Ex: Nubank, Itaú, Cofre..." required>
+                </div>
+                <div class="input-group">
+                    <label>Saldo Inicial (R$)</label>
+                    <input type="text" id="acc_balance" placeholder="0,00" required onkeyup="formatCurrency(this)">
+                </div>
+                
+                <div style="margin-top:20px; display:flex; gap:10px">
+                    <button type="button" onclick="closeAccountModal()" class="btn-cancel">Cancelar</button>
+                    <button type="submit" class="btn-submit">Salvar</button>
+                </div>
             </form>
         </div>
     </div>
 
     <script src="app.js"></script>
+    
+    <script>
+        // Formata moeda enquanto digita (Ex: 1000 -> 1.000,00)
+        function formatCurrency(input) {
+            let value = input.value.replace(/\D/g, '');
+            value = (value / 100).toFixed(2) + '';
+            value = value.replace(".", ",");
+            value = value.replace(/(\d)(?=(\d{3})+(?!\d))/g, "$1.");
+            input.value = value;
+        }
+    </script>
 </body>
 </html>
