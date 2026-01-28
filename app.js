@@ -7,9 +7,13 @@ const supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey)
 let currentDashboardDate = new Date()
 let globalTransactions=[], globalCards=[], globalCategories=[], globalInvestments=[], globalAccounts=[]
 let editingTransactionId=null, editingCardId=null, editingCategoryId=null, editingInvestmentId=null, editingAccountId=null
+let pendingDeleteId = null;
 let myChart=null, investmentChart=null
 let isLoading = false 
 let currentFilterType = 'all'; 
+let currentCategoryFilter = 'all';
+let pendingEditData = null; 
+let originalEditData = null;
 
 // ==========================================
 // 1. SISTEMA DE MODAIS (LIMPO E SIMPLES)
@@ -244,15 +248,45 @@ async function fetchTransactions() {
     applyFilters();
 }
 
+// --- LÓGICA DE FILTROS ATUALIZADA ---
 window.applyFilters = () => {
     const term = document.getElementById('trans-search')?.value.toLowerCase() || '';
+    
     const filtered = globalTransactions.filter(t => {
+        // 1. Filtro de Texto (Busca)
         const matchesTerm = t.description.toLowerCase().includes(term) || (t.categories?.name || '').toLowerCase().includes(term);
+        
+        // 2. Filtro de Tipo (Entrada/Saída)
         const matchesType = currentFilterType === 'all' || t.type === currentFilterType;
-        return matchesTerm && matchesType;
+        
+        // 3. NOVO: Filtro de Categoria (Abas)
+        let matchesCategory = true;
+        if (currentCategoryFilter === 'fixed') {
+            matchesCategory = t.is_fixed === true;
+        } else if (currentCategoryFilter === 'card') {
+            matchesCategory = t.payment_method === 'credit_card';
+        } else if (currentCategoryFilter === 'variable') {
+            // Variável = Não é fixa E não é cartão
+            matchesCategory = !t.is_fixed && t.payment_method !== 'credit_card';
+        }
+
+        return matchesTerm && matchesType && matchesCategory;
     });
+    
     renderList(filtered);
 }
+
+window.setCategoryFilter = (catType, btn) => {
+    // Atualiza visual dos botões
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    
+    // Define o filtro e reaplica
+    currentCategoryFilter = catType;
+    applyFilters();
+}
+
+
 
 window.setFilter = (type, btnElement) => {
     currentFilterType = type;
@@ -280,17 +314,25 @@ function renderList(listData) {
         const isInc = t.type === 'income'
         const dateStr = new Date(t.date).toLocaleDateString('pt-BR', {timeZone:'UTC'})
         const catName = t.categories?.name || 'Sem categoria';
+        
+        // Ícone Interativo
         const statusIcon = t.is_paid 
-            ? '<i class="fa-solid fa-check-circle" style="color:var(--success)" title="Pago"></i>' : '<i class="fa-regular fa-circle" style="color:#cbd5e1" title="Pendente"></i>';
+            ? '<i class="fa-solid fa-check-circle" style="color:var(--success)" title="Pago"></i>' 
+            : '<i class="fa-regular fa-circle" style="color:#cbd5e1" title="Marcar como pago"></i>';
 
         const html = `
         <li class="transaction-item" style="display:flex; justify-content:space-between; align-items:center; padding:15px 0; border-bottom:1px solid #f1f5f9">
             <div style="display:flex; align-items:center; gap:15px">
-                <div style="font-size:1.2rem">${statusIcon}</div>
+                <div class="check-btn-wrapper" onclick="toggleStatus('${t.id}', ${t.is_paid})">
+                    ${statusIcon}
+                </div>
+                
                 <div>
                     <strong style="font-size:0.95rem">${t.description}</strong>
                     <div style="font-size:0.75rem; color:#64748b; margin-top:2px">
                         <span style="background:#f1f5f9; padding:2px 6px; border-radius:4px">${catName}</span> • ${dateStr}
+                        ${t.is_fixed ? '<i class="fa-solid fa-thumbtack" style="margin-left:5px; color:#f59e0b; font-size:0.7rem" title="Fixo"></i>' : ''}
+                        ${t.payment_method === 'credit_card' ? '<i class="fa-solid fa-credit-card" style="margin-left:5px; color:#3b82f6; font-size:0.7rem" title="Cartão"></i>' : ''}
                     </div>
                 </div>
             </div>
@@ -310,18 +352,46 @@ function renderList(listData) {
     })
 }
 
-// SALVAR TRANSAÇÃO
+window.toggleStatus = async (id, currentStatus) => {
+    // Inverte o status atual
+    const newStatus = !currentStatus;
+    
+    // Atualiza no banco
+    const { error } = await supabaseClient
+        .from('transactions')
+        .update({ is_paid: newStatus })
+        .eq('id', id);
+
+    if(error) {
+        alert("Erro ao atualizar status: " + error.message);
+    } else {
+        fetchTransactions();
+        if(newStatus) {
+            console.log("Pago!");
+        }
+    }
+}
+
+// ============================================================
+// LÓGICA DE SALVAR/EDITAR COM PERGUNTA DE RECORRÊNCIA
+// ============================================================
+
+// 1. O Listener do Formulário (Intercepta o clique em Salvar)
 document.getElementById('form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const user = (await supabaseClient.auth.getUser()).data.user;
     
+    // Coleta os dados do formulário
     const amountVal = document.getElementById('amount').value.replace(/\./g, '').replace(',', '.');
     const desc = document.getElementById('description').value;
     const date = document.getElementById('date').value;
     const cat = document.getElementById('category').value;
     const type = document.getElementById('type').value;
     const paymentMethod = document.getElementById('transaction-payment-method').value;
-    
+    const isPaid = document.getElementById('check-paid').checked;
+    const isFixed = document.getElementById('check-fixed').checked;
+    const isInstallment = document.getElementById('check-installments').checked;
+
     let accId = null;
     let creditCardId = null;
 
@@ -333,51 +403,142 @@ document.getElementById('form').addEventListener('submit', async (e) => {
         if(accEl) accId = accEl.value;
         if (!accId) return alert("Selecione uma conta/carteira!");
     }
-    
-    const isPaid = document.getElementById('check-paid').checked;
-    const isFixed = document.getElementById('check-fixed').checked;
-    const isInstallment = document.getElementById('check-installments').checked;
-    let installmentsCount = 1;
-    
-    if (isInstallment && paymentMethod === 'credit_card') {
-        installmentsCount = parseInt(document.getElementById('installments-count').value);
-        if (!installmentsCount || installmentsCount < 2) return alert("Mínimo 2 parcelas.");
-    }
 
+    // Monta o objeto com os DADOS NOVOS
+    const newData = {
+        user_id: user.id,
+        amount: parseFloat(amountVal),
+        description: desc,
+        date: date, 
+        category_id: cat,
+        account_id: accId,
+        type: type,
+        is_paid: isPaid,
+        is_fixed: isFixed,
+        payment_method: paymentMethod,
+        credit_card_id: creditCardId
+    };
+
+    // --- AQUI ACONTECE A MÁGICA DA DECISÃO ---
+    
+    if (editingTransactionId) {
+        // É UMA EDIÇÃO. Vamos verificar se precisa perguntar.
+        const original = globalTransactions.find(t => t.id == editingTransactionId);
+        
+        // Se a conta ERA fixa E continua marcada como fixa...
+        if (original && original.is_fixed) {
+            // PAUSA TUDO! Guarda os dados e abre a pergunta.
+            pendingEditData = newData;      
+            originalEditData = original;    
+            window.showModal('modal-edit-confirm'); // Abre o modal azul
+            return; // Sai da função e espera o usuário responder no modal
+        }
+        
+        // Se não for fixa, salva direto (Modo Simples)
+        await executeUpdate(newData, 'single');
+        
+    } else {
+        // É UMA CRIAÇÃO NOVA (Lógica de parcelas)
+        let installmentsCount = 1;
+        if (isInstallment && paymentMethod === 'credit_card') {
+            installmentsCount = parseInt(document.getElementById('installments-count').value);
+            if (!installmentsCount || installmentsCount < 2) return alert("Mínimo 2 parcelas.");
+        }
+        
+        await createNewTransaction(newData, installmentsCount);
+    }
+});
+
+// 2. Funções que o Modal Azul chama
+window.closeEditConfirmModal = () => {
+    window.hideModal('modal-edit-confirm');
+    pendingEditData = null;
+    originalEditData = null;
+}
+
+window.confirmEdit = async (mode) => {
+    if(!pendingEditData) return;
+    await executeUpdate(pendingEditData, mode);
+    window.closeEditConfirmModal();
+}
+
+// 3. Função que Executa a Atualização no Banco (Single ou All)
+async function executeUpdate(data, mode) {
+    try {
+        if (mode === 'single') {
+            // MODO 1: Atualiza SÓ ESTE ID
+            const { error } = await supabaseClient
+                .from('transactions')
+                .update(data)
+                .eq('id', editingTransactionId);
+            if(error) throw error;
+        } 
+        else if (mode === 'all') {
+            // MODO 2: Atualiza TODOS da série (Baseado no nome original)
+            
+            // Removemos 'date' e 'is_paid' para não bagunçar o histórico/futuro
+            const { date, is_paid, ...dataForOthers } = data;
+            
+            // A. Atualiza o atual completamente (incluindo data e status)
+            await supabaseClient.from('transactions').update(data).eq('id', editingTransactionId);
+
+            // B. Atualiza os "irmãos" (busca pelo nome ANTIGO e tipo)
+            const { error } = await supabaseClient
+                .from('transactions')
+                .update(dataForOthers) // Atualiza valor, nome novo, categoria...
+                .eq('user_id', data.user_id)
+                .eq('description', originalEditData.description) // Busca quem tinha o nome velho
+                .eq('is_fixed', true)
+                .neq('id', editingTransactionId); // Não mexe no atual de novo
+                
+            if(error) throw error;
+        }
+
+        window.hideModal('modal-overlay');
+        fetchTransactions();
+        if(data.payment_method === 'credit_card') fetchCards();
+
+    } catch (error) {
+        alert("Erro ao atualizar: " + error.message);
+    }
+}
+
+// 4. Função Separada para Criar Nova (pra organizar o código)
+async function createNewTransaction(data, installmentsCount) {
     let error = null;
-    const loopCount = editingTransactionId ? 1 : installmentsCount;
-    const baseAmount = parseFloat(amountVal);
+    const baseAmount = data.amount;
     const installmentValue = installmentsCount > 1 ? (baseAmount / installmentsCount) : baseAmount;
+    
+    const loopCount = installmentsCount;
 
     for (let i = 0; i < loopCount; i++) {
-        let finalDate = new Date(date);
+        let finalDate = new Date(data.date);
         finalDate.setMonth(finalDate.getMonth() + i);
-        let finalDesc = desc;
-        if (installmentsCount > 1) finalDesc = `${desc} (${i + 1}/${installmentsCount})`;
+        
+        let finalDesc = data.description;
+        if (installmentsCount > 1) finalDesc = `${data.description} (${i + 1}/${installmentsCount})`;
 
-        const data = {
-            user_id: user.id, amount: installmentValue, description: finalDesc, date: finalDate.toISOString().split('T')[0],
-            category_id: cat, account_id: accId, type: type, is_paid: isPaid, is_fixed: isFixed,
-            payment_method: paymentMethod, credit_card_id: creditCardId,
+        const payload = {
+            ...data,
+            amount: installmentValue,
+            description: finalDesc,
+            date: finalDate.toISOString().split('T')[0],
             installments_total: installmentsCount > 1 ? installmentsCount : 1,
             installment_number: installmentsCount > 1 ? (i + 1) : 1
         };
 
-        if (editingTransactionId) {
-            const { error: err } = await supabaseClient.from('transactions').update(data).eq('id', editingTransactionId);
-            error = err;
-        } else {
-            const { error: err } = await supabaseClient.from('transactions').insert([data]);
-            error = err;
-        }
+        const { error: err } = await supabaseClient.from('transactions').insert([payload]);
+        error = err;
         if(error) break;
     }
 
     if (error) alert("Erro: " + error.message);
     else {
-        window.hideModal('modal-overlay'); fetchTransactions(); if(paymentMethod === 'credit_card') fetchCards();
+        window.hideModal('modal-overlay'); 
+        fetchTransactions(); 
+        if(data.payment_method === 'credit_card') fetchCards();
     }
-});
+}
 
 // EDITAR TRANSAÇÃO
 window.prepareEdit = async (id) => {
@@ -416,10 +577,69 @@ window.prepareEdit = async (id) => {
     document.getElementById('check-fixed').checked = t.is_fixed;
 }
 
-window.removeTrans = async (id) => {
-    if(confirm('Apagar transação?')) {
-        await supabaseClient.from('transactions').delete().eq('id', id);
+// --- SISTEMA DE EXCLUSÃO INTELIGENTE ---
+window.removeTrans = (id) => {
+    // 1. Guarda o ID que queremos apagar
+    pendingDeleteId = id;
+    
+    // 2. Busca os dados da transação para personalizar a mensagem
+    const t = globalTransactions.find(tr => tr.id == id);
+    
+    if (t) {
+        const msgElement = document.getElementById('delete-msg');
+        // Se for fixa ou parcelada, sugere apagar todas
+        if (t.is_fixed || (t.description.includes('/') && t.payment_method === 'credit_card')) {
+            msgElement.innerText = `"${t.description}" parece ser uma transação recorrente ou parcelada.`;
+            document.querySelector("button[onclick=\"executeDelete('all')\"]").classList.remove('hidden');
+        } else {
+            // Se for comum, esconde o botão "Excluir Todas" para não confundir (opcional, ou mantém para limpar duplicatas)
+            msgElement.innerText = `Deseja realmente excluir "${t.description}"?`;
+        }
+    }
+
+    // 3. Abre o modal novo
+    window.showModal('modal-delete');
+}
+
+window.closeDeleteModal = () => {
+    pendingDeleteId = null;
+    window.hideModal('modal-delete');
+}
+
+window.executeDelete = async (mode) => {
+    if (!pendingDeleteId) return;
+
+    const t = globalTransactions.find(tr => tr.id == pendingDeleteId);
+    if (!t) return;
+
+    try {
+        if (mode === 'single') {
+            // MODO 1: Apaga só a selecionada (Padrão)
+            await supabaseClient.from('transactions').delete().eq('id', pendingDeleteId);
+        } 
+        else if (mode === 'all') {
+            // MODO 2: Apaga TODAS as "gêmeas" (Mesma descrição, valor e tipo)
+            // Isso limpa a série inteira (passado e futuro)
+            const { error } = await supabaseClient
+                .from('transactions')
+                .delete()
+                .eq('user_id', t.user_id)
+                .eq('description', t.description)
+                .eq('amount', t.amount) // Garante que não apaga outra coisa com mesmo nome mas valor diferente
+                .eq('type', t.type);
+                
+            if (error) throw error;
+        }
+
+        // Atualiza a tela
         fetchTransactions();
+        // Se for cartão, atualiza limite também
+        if (t.payment_method === 'credit_card') fetchCards();
+        
+    } catch (error) {
+        alert("Erro ao excluir: " + error.message);
+    } finally {
+        closeDeleteModal();
     }
 }
 
@@ -1002,7 +1222,77 @@ window.openGoalModal=async()=>{document.getElementById('form-goal').reset(); con
 window.closeGoalModal=()=>window.hideModal('modal-goal-overlay')
 document.getElementById('form-goal').addEventListener('submit', async(e)=>{ e.preventDefault(); const user=(await supabaseClient.auth.getUser()).data.user; const catId=document.getElementById('goal_category').value; const amount=parseFloat(document.getElementById('goal_amount').value.replace(/\./g, '').replace(',', '.')); await supabaseClient.from('goals').delete().eq('user_id',user.id).eq('category_id',catId); await supabaseClient.from('goals').insert([{user_id:user.id, category_id:catId, target_amount:amount}]); window.hideModal('modal-goal-overlay'); fetchGoals(user.id) })
 async function fetchGoals(userId) { const list = document.getElementById('goals-list-widget'); if(!list) return; const { data: goals } = await supabaseClient.from('goals').select(`*, categories(name)`).eq('user_id', userId); if(!goals || goals.length === 0) { list.innerHTML = '<small style="color:#94a3b8">Nenhuma meta definida.</small>'; return; } const year = currentDashboardDate.getFullYear(); const month = currentDashboardDate.getMonth(); const start = new Date(year, month, 1).toISOString(); const end = new Date(year, month + 1, 0).toISOString(); const { data: expenses } = await supabaseClient.from('transactions').select('amount, category_id').eq('user_id', userId).eq('type', 'expense').gte('date', start).lte('date', end); list.innerHTML = ''; goals.forEach(g => { const spent = expenses.filter(e => e.category_id === g.category_id).reduce((acc, curr) => acc + curr.amount, 0); const percent = Math.min((spent / g.target_amount) * 100, 100); let color = '#10b981'; if(percent > 75) color = '#f59e0b'; if(percent >= 100) color = '#ef4444'; list.innerHTML += `<div class="goal-item" style="margin-bottom:15px"><div style="display:flex; justify-content:space-between; font-size:0.8rem; font-weight:700; margin-bottom:5px; color:var(--text-muted)"><span>${g.categories.name}</span><span>${Math.round(percent)}%</span></div><div class="progress-bg"><div class="progress-fill" style="width:${percent}%; background:${color}"></div></div><div style="display:flex; justify-content:space-between; font-size:0.7rem; margin-top:3px; color:#94a3b8"><span>R$ ${spent.toLocaleString('pt-br')}</span><span>Meta: R$ ${g.target_amount.toLocaleString('pt-br')}</span></div></div>`; }); }
-async function processFixedExpenses(userId) { const targetDate = new Date(currentDashboardDate); const targetMonth = targetDate.getMonth(), targetYear = targetDate.getFullYear(); const { data: fixedOps } = await supabaseClient.from('transactions').select('*').eq('user_id', userId).eq('is_fixed', true); if (!fixedOps || fixedOps.length === 0) return; for (const op of fixedOps) { const opDate = new Date(op.date + 'T00:00:00'); if (opDate.getMonth() === targetMonth && opDate.getFullYear() === targetYear) continue; if (opDate > new Date(targetYear, targetMonth + 1, 0)) continue; const startOfMonth = new Date(targetYear, targetMonth, 1).toISOString(); const endOfMonth = new Date(targetYear, targetMonth + 1, 0).toISOString(); const { data: duplicates } = await supabaseClient.from('transactions').select('id').eq('description', op.description).gte('date', startOfMonth).lte('date', endOfMonth); if (duplicates.length === 0) { const originalDay = opDate.getDate(); const lastDayOfTargetMonth = new Date(targetYear, targetMonth + 1, 0).getDate(); const newDate = new Date(targetYear, targetMonth, Math.min(originalDay, lastDayOfTargetMonth)); await supabaseClient.from('transactions').insert([{ description: op.description, amount: op.amount, type: op.type, category_id: op.category_id, account_id: op.account_id, payment_method: op.payment_method, user_id: userId, is_paid: false, date: newDate.toISOString().split('T')[0], credit_card_id: op.credit_card_id, is_fixed: false }]) } } }
+async function processFixedExpenses(userId) { 
+    const targetDate = new Date(currentDashboardDate); 
+    const targetMonth = targetDate.getMonth(), targetYear = targetDate.getFullYear(); 
+    
+    // Busca todas as fixas do usuário
+    const { data: fixedOps } = await supabaseClient.from('transactions')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('is_fixed', true); 
+
+    if (!fixedOps || fixedOps.length === 0) return; 
+
+    for (const op of fixedOps) { 
+        const opDate = new Date(op.date + 'T00:00:00'); 
+        
+        // Se a despesa já é deste mês ou futuro, pula
+        if (opDate.getMonth() === targetMonth && opDate.getFullYear() === targetYear) continue; 
+        if (opDate > new Date(targetYear, targetMonth + 1, 0)) continue; 
+
+        // Define o intervalo do mês atual para verificar duplicatas
+        const startOfMonth = new Date(targetYear, targetMonth, 1).toISOString(); 
+        const endOfMonth = new Date(targetYear, targetMonth + 1, 0).toISOString(); 
+
+        // Verifica se já existe uma transação com o MESMO NOME neste mês
+        const { data: duplicates } = await supabaseClient.from('transactions')
+            .select('id')
+            .eq('description', op.description) // A chave é o nome
+            .gte('date', startOfMonth)
+            .lte('date', endOfMonth); 
+
+        if (duplicates.length === 0) { 
+            // Calcula o dia correto (ex: dia 30 em fevereiro vira dia 28)
+            const originalDay = opDate.getDate(); 
+            const lastDayOfTargetMonth = new Date(targetYear, targetMonth + 1, 0).getDate(); 
+            const newDate = new Date(targetYear, targetMonth, Math.min(originalDay, lastDayOfTargetMonth)); 
+            
+            // CRIA A CÓPIA
+            await supabaseClient.from('transactions').insert([{ 
+                description: op.description, 
+                amount: op.amount, 
+                type: op.type, 
+                category_id: op.category_id, 
+                account_id: op.account_id, 
+                payment_method: op.payment_method, 
+                user_id: userId, 
+                is_paid: false, // Nasce pendente
+                date: newDate.toISOString().split('T')[0], 
+                credit_card_id: op.credit_card_id, 
+                is_fixed: true // <--- A CORREÇÃO ESTÁ AQUI (Antes estava false)
+            }]);
+        } 
+    } 
+}
+
+// ==========================================
+// 8. MENU MOBILE (Responsividade)
+// ==========================================
+
+window.toggleSidebar = () => {
+    const sidebar = document.querySelector('.sidebar');
+    const overlay = document.getElementById('sidebar-overlay');
+    
+    // Troca a classe .active (se tem tira, se não tem põe)
+    sidebar.classList.toggle('active');
+    overlay.classList.toggle('active');
+}
+
+// Fecha o menu se clicar no fundo escuro (Overlay)
+document.getElementById('sidebar-overlay').addEventListener('click', () => {
+    window.toggleSidebar();
+});
 
 // INICIALIZAÇÃO
 setupEventListeners();

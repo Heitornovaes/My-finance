@@ -190,28 +190,36 @@
                 </div>
             </section>
     
-            <section id="view-transactions" class="view-section hidden">
-                <div class="header-action">
-                    <h2 style="margin-right:auto">Extrato</h2>
-                    <div class="month-navigator">
-                        <button onclick="changeMonth(-1)"><i class="fa-solid fa-chevron-left"></i></button>
-                        <span id="current-month-display-extrato">MÊS</span>
-                        <button onclick="changeMonth(1)"><i class="fa-solid fa-chevron-right"></i></button>
-                    </div>
-                </div>
+          <section id="view-transactions" class="view-section hidden">
+    
+    <div class="header-action">
+        <h2 style="margin-right:auto">Extrato</h2>
+        <div class="month-navigator">
+            <button onclick="changeMonth(-1)"><i class="fa-solid fa-chevron-left"></i></button>
+            <span id="current-month-display-extrato">MÊS</span>
+            <button onclick="changeMonth(1)"><i class="fa-solid fa-chevron-right"></i></button>
+        </div>
+    </div>
 
-                <div class="filter-container">
-                    <div class="search-box">
-                        <i class="fa-solid fa-magnifying-glass"></i>
-                        <input type="text" id="trans-search" placeholder="Buscar (ex: Uber, Mercado...)" onkeyup="applyFilters()">
-                    </div>
+    <div class="tabs-container">
+        <button class="tab-btn active" onclick="setCategoryFilter('all', this)">Todas</button>
+        <button class="tab-btn" onclick="setCategoryFilter('fixed', this)"><i class="fa-solid fa-thumbtack"></i> Fixas</button>
+        <button class="tab-btn" onclick="setCategoryFilter('card', this)"><i class="fa-solid fa-credit-card"></i> Cartão</button>
+        <button class="tab-btn" onclick="setCategoryFilter('variable', this)"><i class="fa-solid fa-money-bill-wave"></i> Variáveis</button>
+    </div>
 
-                    <div class="filter-buttons">
-                        <button class="filter-btn active" onclick="setFilter('all', this)">Todos</button>
-                        <button class="filter-btn" onclick="setFilter('income', this)">Entradas</button>
-                        <button class="filter-btn" onclick="setFilter('expense', this)">Saídas</button>
-                    </div>
-                </div>
+    <div class="filter-container">
+        <div class="search-box">
+            <i class="fa-solid fa-magnifying-glass"></i>
+            <input type="text" id="trans-search" placeholder="Buscar..." onkeyup="applyFilters()">
+        </div>
+
+        <div class="filter-buttons">
+            <button class="filter-btn active" onclick="setFilter('all', this)">Todos</button>
+            <button class="filter-btn" onclick="setFilter('income', this)">Entradas</button>
+            <button class="filter-btn" onclick="setFilter('expense', this)">Saídas</button>
+        </div>
+    </div>
 
                 <div class="card">
                     <ul id="transactions-full"></ul>
@@ -502,5 +510,44 @@
             input.value = value;
         }
     </script>
+
+<div id="modal-delete" class="modal-overlay hidden">
+    <div class="modal-content" style="text-align: center; max-width: 380px;">
+        <div style="font-size: 3rem; color: var(--danger); margin-bottom: 15px;">
+            <i class="fa-solid fa-trash-can"></i>
+        </div>
+        <h3 style="margin-bottom: 10px;">Excluir Transação</h3>
+        <p id="delete-msg" style="color: var(--text-muted); margin-bottom: 25px; font-size: 0.9rem;">
+            Esta transação parece ser recorrente. Como deseja prosseguir?
+        </p>
+        
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+            <button onclick="executeDelete('all')" class="btn-submit" style="background: var(--danger);">Excluir Todas (Série Completa)</button>
+            <button onclick="executeDelete('single')" class="btn-cancel" style="background: white; border: 1px solid #e2e8f0;">Excluir Apenas Esta</button>
+            <button onclick="closeDeleteModal()" style="margin-top: 5px; border: none; background: none; color: var(--text-muted); cursor: pointer; font-size: 0.85rem;">Cancelar</button>
+        </div>
+    </div>
+</div>
+
+<div id="modal-edit-confirm" class="modal-overlay hidden">
+    <div class="modal-content" style="text-align: center; max-width: 400px;">
+        <div style="font-size: 3rem; color: var(--secondary); margin-bottom: 15px;">
+            <i class="fa-solid fa-pen-to-square"></i>
+        </div>
+        <h3 style="margin-bottom: 10px;">Editar Recorrência</h3>
+        <p style="color: var(--text-muted); margin-bottom: 25px; font-size: 0.9rem;">
+            Esta é uma despesa fixa. Você deseja aplicar as alterações apenas neste registro ou em todos os futuros?
+        </p>
+        
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+            <button onclick="confirmEdit('all')" class="btn-submit" style="background: var(--secondary);">Atualizar Todas (Série)</button>
+            <button onclick="confirmEdit('single')" class="btn-cancel" style="background: white; border: 1px solid #e2e8f0;">Atualizar Apenas Esta</button>
+            <button onclick="closeEditConfirmModal()" style="margin-top: 5px; border: none; background: none; color: var(--text-muted); cursor: pointer; font-size: 0.85rem;">Cancelar</button>
+        </div>
+    </div>
+</div>
+
+
+
 </body>
 </html>
