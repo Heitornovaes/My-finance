@@ -219,14 +219,17 @@ async function fetchTransactions() {
     globalTransactions = trans || []
     
     let income=0, expense=0, cats={}
+    
     globalTransactions.forEach(t => {
-        if(t.is_paid || t.payment_method === 'credit_card') {
-            if(t.type === 'income') income += t.amount
-            else { 
-                expense += t.amount; 
-                const cName = t.categories?.name || 'Outros'; 
-                cats[cName] = (cats[cName] || 0) + t.amount 
-            }
+        // --- MUDANÇA: MODO PREVISÃO ---
+        // Somamos tudo (pago ou não) para mostrar o potencial do mês
+        
+        if(t.type === 'income') {
+            income += t.amount
+        } else { 
+            expense += t.amount; 
+            const cName = t.categories?.name || 'Outros'; 
+            cats[cName] = (cats[cName] || 0) + t.amount 
         }
     })
 
@@ -236,6 +239,12 @@ async function fetchTransactions() {
     const balance = income - expense;
     if(document.getElementById('display-balance')) {
         document.getElementById('display-balance').innerText = `R$ ${balance.toLocaleString('pt-br',{minimumFractionDigits:2})}`;
+        
+        // --- UX: MUDAR RÓTULO PARA EVITAR CONFUSÃO ---
+        // Acessa o elemento <small> dentro do card de saldo e muda o texto
+        const labelSaldo = document.querySelector('#card-balance-bg small');
+        if(labelSaldo) labelSaldo.innerText = "SALDO PREVISTO";
+
         const cardBg = document.getElementById('card-balance-bg');
         if(cardBg) {
             if(balance < 0) { cardBg.style.background = '#fef2f2'; cardBg.style.color = '#991b1b'; } 
@@ -1217,11 +1226,116 @@ window.removeInv=async(id)=>{if(confirm('Apagar?')){await supabaseClient.from('a
 window.openCategoryModal=()=>{editingCategoryId=null;document.getElementById('form-category').reset();window.showModal('modal-category-overlay')}; window.closeCategoryModal=()=>window.hideModal('modal-category-overlay')
 document.getElementById('form-category').addEventListener('submit', async(e)=>{ e.preventDefault(); const user=(await supabaseClient.auth.getUser()).data.user; const data={name:document.getElementById('cat_name').value, icon:document.getElementById('cat_icon').value, user_id:user.id, is_default:false, type:'expense'}; if(editingCategoryId) await supabaseClient.from('categories').update(data).eq('id',editingCategoryId); else await supabaseClient.from('categories').insert([data]); window.hideModal('modal-category-overlay'); fetchCategories(); loadDropdowns(user.id) })
 window.removeCat=async(id)=>{if(confirm('Apagar?')){const{error}=await supabaseClient.from('categories').delete().eq('id',id); if(error)alert("Em uso."); else fetchCategories()}}
-async function fetchCategories() { const { data: { user } } = await supabaseClient.auth.getUser(); const { data: cats } = await supabaseClient.from('categories').select('*').or(`user_id.eq.${user.id},is_default.eq.true`); globalCategories = cats; const grid = document.getElementById('categories-list'); grid.innerHTML = ''; cats.forEach(c => { const btns = c.is_default ? '' : `<div class="action-buttons"><button class="action-btn delete" onclick="removeCat(${c.id})"><i class="fa-solid fa-trash"></i></button></div>`; grid.innerHTML += `<div class="category-card"><div style="display:flex;align-items:center;gap:12px"><div style="background:#f1f5f9;color:var(--primary);width:35px;height:35px;display:flex;align-items:center;justify-content:center;border-radius:8px"><i class="fa-solid ${c.icon||'fa-tag'}"></i></div><strong>${c.name}</strong></div>${btns}</div>` }) }
+async function fetchCategories() { 
+    const { data: { user } } = await supabaseClient.auth.getUser(); 
+    const { data: cats } = await supabaseClient.from('categories').select('*').or(`user_id.eq.${user.id},is_default.eq.true`); 
+    
+    globalCategories = cats; // Salva na memória para podermos editar
+    const grid = document.getElementById('categories-list'); 
+    grid.innerHTML = ''; 
+    
+    cats.forEach(c => { 
+        // Lógica: Se for padrão (cadeado), não tem botões. Se for sua, tem Editar e Excluir.
+        const btns = c.is_default 
+            ? '' 
+            : `<div class="action-buttons">
+                 <button class="action-btn" onclick="prepareEditCategory('${c.id}')"><i class="fa-solid fa-pen"></i></button>
+                 <button class="action-btn delete" onclick="removeCat(${c.id})"><i class="fa-solid fa-trash"></i></button>
+               </div>`; 
+        
+        grid.innerHTML += `
+        <div class="category-card">
+            <div style="display:flex;align-items:center;gap:12px">
+                <div style="background:#f1f5f9;color:var(--primary);width:35px;height:35px;display:flex;align-items:center;justify-content:center;border-radius:8px">
+                    <i class="fa-solid ${c.icon||'fa-tag'}"></i>
+                </div>
+                <strong>${c.name}</strong>
+            </div>
+            ${btns}
+        </div>` 
+    }) 
+}
+window.prepareEditCategory = (id) => {
+    // Busca os dados da categoria clicada
+    const cat = globalCategories.find(c => c.id == id);
+    if(!cat) return;
+
+    editingCategoryId = id; // Marca que estamos editando
+    
+    // Preenche o formulário
+    document.getElementById('cat_name').value = cat.name;
+    document.getElementById('cat_icon').value = cat.icon || 'fa-tag';
+    
+    // Abre o modal
+    window.showModal('modal-category-overlay');
+}
 window.openGoalModal=async()=>{document.getElementById('form-goal').reset(); const user=(await supabaseClient.auth.getUser()).data.user; const {data:cats}=await supabaseClient.from('categories').select('*').or(`user_id.eq.${user.id},is_default.eq.true`); const sel=document.getElementById('goal_category'); sel.innerHTML=''; cats.forEach(c=>sel.innerHTML+=`<option value="${c.id}">${c.name}</option>`); window.showModal('modal-goal-overlay')}
 window.closeGoalModal=()=>window.hideModal('modal-goal-overlay')
 document.getElementById('form-goal').addEventListener('submit', async(e)=>{ e.preventDefault(); const user=(await supabaseClient.auth.getUser()).data.user; const catId=document.getElementById('goal_category').value; const amount=parseFloat(document.getElementById('goal_amount').value.replace(/\./g, '').replace(',', '.')); await supabaseClient.from('goals').delete().eq('user_id',user.id).eq('category_id',catId); await supabaseClient.from('goals').insert([{user_id:user.id, category_id:catId, target_amount:amount}]); window.hideModal('modal-goal-overlay'); fetchGoals(user.id) })
-async function fetchGoals(userId) { const list = document.getElementById('goals-list-widget'); if(!list) return; const { data: goals } = await supabaseClient.from('goals').select(`*, categories(name)`).eq('user_id', userId); if(!goals || goals.length === 0) { list.innerHTML = '<small style="color:#94a3b8">Nenhuma meta definida.</small>'; return; } const year = currentDashboardDate.getFullYear(); const month = currentDashboardDate.getMonth(); const start = new Date(year, month, 1).toISOString(); const end = new Date(year, month + 1, 0).toISOString(); const { data: expenses } = await supabaseClient.from('transactions').select('amount, category_id').eq('user_id', userId).eq('type', 'expense').gte('date', start).lte('date', end); list.innerHTML = ''; goals.forEach(g => { const spent = expenses.filter(e => e.category_id === g.category_id).reduce((acc, curr) => acc + curr.amount, 0); const percent = Math.min((spent / g.target_amount) * 100, 100); let color = '#10b981'; if(percent > 75) color = '#f59e0b'; if(percent >= 100) color = '#ef4444'; list.innerHTML += `<div class="goal-item" style="margin-bottom:15px"><div style="display:flex; justify-content:space-between; font-size:0.8rem; font-weight:700; margin-bottom:5px; color:var(--text-muted)"><span>${g.categories.name}</span><span>${Math.round(percent)}%</span></div><div class="progress-bg"><div class="progress-fill" style="width:${percent}%; background:${color}"></div></div><div style="display:flex; justify-content:space-between; font-size:0.7rem; margin-top:3px; color:#94a3b8"><span>R$ ${spent.toLocaleString('pt-br')}</span><span>Meta: R$ ${g.target_amount.toLocaleString('pt-br')}</span></div></div>`; }); }
+async function fetchGoals(userId) { 
+    const list = document.getElementById('goals-list-widget'); 
+    if(!list) return; 
+    
+    const { data: goals } = await supabaseClient.from('goals').select(`*, categories(name)`).eq('user_id', userId); 
+    
+    if(!goals || goals.length === 0) { 
+        list.innerHTML = '<small style="color:#94a3b8">Nenhuma meta definida.</small>'; 
+        return; 
+    } 
+    
+    const year = currentDashboardDate.getFullYear(); 
+    const month = currentDashboardDate.getMonth(); 
+    const start = new Date(year, month, 1).toISOString(); 
+    const end = new Date(year, month + 1, 0).toISOString(); 
+    
+    const { data: expenses } = await supabaseClient.from('transactions').select('amount, category_id').eq('user_id', userId).eq('type', 'expense').gte('date', start).lte('date', end); 
+    
+    list.innerHTML = ''; 
+    
+    goals.forEach(g => { 
+        const spent = expenses.filter(e => e.category_id === g.category_id).reduce((acc, curr) => acc + curr.amount, 0); 
+        const percent = Math.min((spent / g.target_amount) * 100, 100); 
+        let color = '#10b981'; 
+        if(percent > 75) color = '#f59e0b'; 
+        if(percent >= 100) color = '#ef4444'; 
+        
+        list.innerHTML += `
+        <div class="goal-item" style="margin-bottom:15px">
+            <div style="display:flex; justify-content:space-between; font-size:0.8rem; font-weight:700; margin-bottom:5px; color:var(--text-muted)">
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <span>${g.categories.name}</span>
+                    <div style="display:flex; gap:5px; opacity:0.6;">
+                        <i class="fa-solid fa-pen" style="cursor:pointer; font-size:0.7rem;" onclick="prepareEditGoal('${g.category_id}', ${g.target_amount})" title="Editar Valor"></i>
+                        <i class="fa-solid fa-trash" style="cursor:pointer; color:#ef4444; font-size:0.7rem;" onclick="removeGoal('${g.id}')" title="Excluir Meta"></i>
+                    </div>
+                </div>
+                <span>${Math.round(percent)}%</span>
+            </div>
+            <div class="progress-bg"><div class="progress-fill" style="width:${percent}%; background:${color}"></div></div>
+            <div style="display:flex; justify-content:space-between; font-size:0.7rem; margin-top:3px; color:#94a3b8">
+                <span>R$ ${spent.toLocaleString('pt-br')}</span>
+                <span>Meta: R$ ${g.target_amount.toLocaleString('pt-br')}</span>
+            </div>
+        </div>`; 
+    }); 
+}
+window.removeGoal = async (id) => {
+    if(confirm('Tem certeza que deseja excluir esta meta?')) {
+        const { error } = await supabaseClient.from('goals').delete().eq('id', id);
+        if(!error) {
+            const user = (await supabaseClient.auth.getUser()).data.user;
+            fetchGoals(user.id);
+        } else {
+            alert("Erro ao excluir: " + error.message);
+        }
+    }
+}
+window.prepareEditGoal = (catId, currentAmount) => {
+    // Abre o modal já com a categoria e valor selecionados
+    document.getElementById('goal_category').value = catId;
+    document.getElementById('goal_amount').value = currentAmount.toLocaleString('pt-br', {minimumFractionDigits: 2});
+    window.showModal('modal-goal-overlay');
+}
 async function processFixedExpenses(userId) { 
     const targetDate = new Date(currentDashboardDate); 
     const targetMonth = targetDate.getMonth(), targetYear = targetDate.getFullYear(); 
