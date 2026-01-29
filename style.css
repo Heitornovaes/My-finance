@@ -466,3 +466,69 @@ body {
     transform: scale(1.1);
 }
 
+/* --- MODO PRIVACIDADE --- */
+
+/* 1. Valores dos Cartões do Topo (IDs específicos) */
+body.hide-values #display-income,
+body.hide-values #display-expense,
+body.hide-values #display-balance,
+body.hide-values #card-balance-bg h2, 
+
+/* 2. Valores nas listas (Contas e Extrato) */
+body.hide-values .account-item > div:last-child > div:first-child,
+body.hide-values .transaction-item > div:last-child > div:first-child,
+
+/* 3. Outros valores espalhados */
+body.hide-values .invest-value,
+body.hide-values #total-accounts-balance,
+body.hide-values .goal-item span:nth-child(2),
+body.hide-values .invoice-item b
+{
+    filter: blur(8px) !important;
+    color: transparent !important; 
+    text-shadow: 0 0 8px rgba(0,0,0,0.5); 
+    user-select: none;
+    pointer-events: none;
+    transition: all 0.3s ease;
+}
+
+/* --- NOTIFICAÇÕES TOAST --- */
+#toast-container {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 10000; /* Fica acima de tudo, inclusive modais */
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.toast {
+    background: var(--bg-card); /* Respeita o modo escuro/claro */
+    color: var(--text-main);
+    padding: 16px 20px;
+    border-radius: 12px;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.15);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 300px;
+    animation: slideIn 0.3s cubic-bezier(0.68, -0.55, 0.27, 1.55); /* Efeito elástico */
+    border-left: 5px solid;
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+/* Tipos de Toast */
+.toast.success { border-color: #10b981; }
+.toast.error { border-color: #ef4444; }
+.toast.info { border-color: #3b82f6; }
+
+@keyframes slideIn {
+    from { transform: translateX(120%); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes fadeOut {
+    to { transform: translateX(120%); opacity: 0; }
+}

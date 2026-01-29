@@ -76,7 +76,7 @@ async function checkUser() {
 async function login() {
     const email = document.getElementById('email').value
     const password = document.getElementById('password').value
-    if(!email || !password) return alert("Preencha todos os campos!")
+    if(!email || !password) return showToast("Preencha todos os campos!", 'info')
     
     const btn = document.getElementById('btnLogin');
     const oldText = btn.innerText;
@@ -86,7 +86,7 @@ async function login() {
     const { error } = await supabaseClient.auth.signInWithPassword({ email, password })
     
     if (error) {
-        alert("Erro: " + error.message);
+        showToast("Erro: " + error.message, 'error');
         btn.innerText = oldText;
         btn.disabled = false;
     } else {
@@ -417,11 +417,11 @@ document.getElementById('form').addEventListener('submit', async (e) => {
 
     if (paymentMethod === 'credit_card') {
         creditCardId = document.getElementById('transaction-card-input').value;
-        if (!creditCardId) return alert("Selecione um cartão!");
+        if (!creditCardId) return showToast("Selecione um cartão!", 'info');
     } else {
         const accEl = document.getElementById('account');
         if(accEl) accId = accEl.value;
-        if (!accId) return alert("Selecione uma conta/carteira!");
+        if (!accId) return showToast("Selecione uma conta/carteira!", 'info');
     }
 
     // Monta o objeto com os DADOS NOVOS
@@ -462,7 +462,7 @@ document.getElementById('form').addEventListener('submit', async (e) => {
         let installmentsCount = 1;
         if (isInstallment && paymentMethod === 'credit_card') {
             installmentsCount = parseInt(document.getElementById('installments-count').value);
-            if (!installmentsCount || installmentsCount < 2) return alert("Mínimo 2 parcelas.");
+            if (!installmentsCount || installmentsCount < 2) return showToast("Mínimo 2 parcelas.", 'info');
         }
         
         await createNewTransaction(newData, installmentsCount);
@@ -519,7 +519,7 @@ async function executeUpdate(data, mode) {
         if(data.payment_method === 'credit_card') fetchCards();
 
     } catch (error) {
-        alert("Erro ao atualizar: " + error.message);
+       showToast("Erro: " + error.message, 'error');
     }
 }
 
@@ -555,6 +555,7 @@ async function createNewTransaction(data, installmentsCount) {
     if (error) alert("Erro: " + error.message);
     else {
         window.hideModal('modal-overlay'); 
+        showToast('Operação realizada com sucesso!', 'success');
         fetchTransactions(); 
         if(data.payment_method === 'credit_card') fetchCards();
     }
@@ -1412,6 +1413,70 @@ window.toggleSidebar = () => {
 document.getElementById('sidebar-overlay').addEventListener('click', () => {
     window.toggleSidebar();
 });
+
+// --- MODO PRIVACIDADE (ATUALIZADO) ---
+window.togglePrivacy = () => {
+    const body = document.body;
+    body.classList.toggle('hide-values');
+    
+    const isHidden = body.classList.contains('hide-values');
+    localStorage.setItem('privacyMode', isHidden ? 'hidden' : 'visible');
+    
+    updatePrivacyUI(isHidden);
+}
+
+function updatePrivacyUI(isHidden) {
+    // Agora buscamos o ícone pelo NOVO ID no widget
+    const icon = document.getElementById('privacy-icon-widget');
+    if(!icon) return;
+    
+    // Troca apenas o ícone (não tem mais texto)
+    if(isHidden) {
+        icon.className = 'fa-solid fa-eye-slash';
+    } else {
+        icon.className = 'fa-solid fa-eye';
+    }
+}
+
+// Verifica ao carregar a página
+if(localStorage.getItem('privacyMode') === 'hidden') {
+    document.body.classList.add('hide-values');
+    // Pequeno timeout para garantir que o ícone carregou antes de tentar mudar
+    setTimeout(() => updatePrivacyUI(true), 100);
+}
+
+// --- SISTEMA DE NOTIFICAÇÕES (TOAST) ---
+window.showToast = (message, type = 'success') => {
+    const container = document.getElementById('toast-container');
+    
+    // Cria o elemento
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    
+    // Escolhe o ícone baseado no tipo
+    let icon = 'fa-circle-check';
+    let color = '#10b981'; // Verde
+    
+    if (type === 'error') { icon = 'fa-circle-xmark'; color = '#ef4444'; }
+    if (type === 'info')  { icon = 'fa-circle-info';  color = '#3b82f6'; }
+
+    toast.innerHTML = `
+        <i class="fa-solid ${icon}" style="color: ${color}; font-size: 1.2rem;"></i>
+        <span>${message}</span>
+    `;
+
+    // Adiciona na tela
+    container.appendChild(toast);
+
+    // Remove automaticamente depois de 3 segundos
+    setTimeout(() => {
+        toast.style.animation = 'fadeOut 0.3s forwards';
+        setTimeout(() => toast.remove(), 300);
+    }, 3000);
+}
+
+
+
 
 // INICIALIZAÇÃO
 setupEventListeners();
