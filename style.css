@@ -53,6 +53,32 @@ body {
 .nav-item.active { background-color: #ecfdf5; color: var(--primary); font-weight: 700; }
 .user-profile { margin-top: auto; padding-top: 20px; border-top: 1px solid #f3f4f6; }
 
+
+/* --- LOGO DA TELA DE LOGIN --- */
+.login-logo-img {
+    display: block;
+    width: 140px; /* Tamanho ideal para o login */
+    height: auto;
+    margin: 0 auto 15px auto; /* Centraliza e dá espaço embaixo */
+}
+
+/* --- LOGO DO MENU LATERAL --- */
+.sidebar-logo {
+    display: block;
+    max-width: 150px; /* Ajuste para caber na barra lateral */
+    height: auto;
+    margin-right: auto; /* Centraliza ou ajusta conforme preferir */
+}
+
+/* Ajuste no container da marca para alinhar tudo */
+.brand {
+    display: flex;
+    align-items: center;
+    justify-content: center; /* Centraliza o logo na sidebar */
+    padding: 20px 10px;
+    margin-bottom: 20px;
+}
+
 /* --- MAIN CONTENT --- */
 .main-content {
     flex: 1;
@@ -439,3 +465,4 @@ body {
     background-color: #f1f5f9;
     transform: scale(1.1);
 }
+

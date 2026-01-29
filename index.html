@@ -12,13 +12,14 @@
     
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+    <link rel="icon" type="image/png" href="assets/Logo-myfinance.png">
 </head>
 
 <body>
 
     <div id="login-screen" class="login-container">
         <div class="login-box">
-            <div style="font-size:3rem; color:var(--primary); margin-bottom:10px"><i class="fa-solid fa-rocket"></i></div>
+          <img src="assets/Logo-myfinance.png" alt="Logo My Finance" class="login-logo-img">
             <h2 style="margin-bottom:5px">Bem-vindo!</h2>
             <p style="color:#6b7280; margin-bottom:30px">Gerencie suas finanças de forma inteligente.</p>
             
@@ -47,9 +48,10 @@
     <div id="app-layout" class="hidden">
         
         <aside class="sidebar">
-            <div class="brand">
-                <i class="fa-solid fa-rocket"></i> My Finance
-            </div>
+          <div class="brand">
+    <img src="assets/Logo-myfinance.png" alt="Logo My Finance" class="sidebar-logo">
+
+</div>
             
             <nav style="flex:1">
                 <div class="nav-item active" onclick="showSection('dashboard')">

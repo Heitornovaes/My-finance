@@ -116,12 +116,28 @@ window.showSection = function(id) {
     refreshCurrentView()
 }
 
-function refreshCurrentView() {
-    if(!document.getElementById('view-transactions').classList.contains('hidden')) fetchTransactions()
-    else if(!document.getElementById('view-dashboard').classList.contains('hidden')) fetchTransactions()
-    else if(!document.getElementById('view-cards').classList.contains('hidden')) fetchCards()
-    else if(!document.getElementById('view-investments').classList.contains('hidden')) fetchInvestments()
-    else if(!document.getElementById('view-categories').classList.contains('hidden')) fetchCategories()
+
+async function refreshCurrentView() {
+    const { data: { user } } = await supabaseClient.auth.getUser();
+    if (!user) return;
+
+    try {
+        await Promise.all([
+            fetchTransactions(user.id),      // Extrato
+            fetchGoals(user.id),             // Metas
+            fetchCategories(),               // Categorias
+            fetchCards(user.id),             // Cartões
+            fetchInvestments(user.id),       // Investimentos
+            updateAccountsWidget(user.id)    // <--- ADICIONADO AQUI (Agora carrega em paralelo)
+        ]);
+
+        if (!document.getElementById('view-dashboard').classList.contains('hidden')) {
+            updateChart(); 
+        }
+
+    } catch (error) {
+        console.error("Erro ao atualizar dados:", error);
+    }
 }
 
 function updateDateDisplay() {
@@ -133,13 +149,17 @@ function updateDateDisplay() {
 window.changeMonth = async function(step) {
     if(isLoading) return; 
     isLoading = true;
-    currentDashboardDate.setMonth(currentDashboardDate.getMonth() + step)
-    updateDateDisplay()
-    
-    const { data: { user } } = await supabaseClient.auth.getUser()
-    if(user) await processFixedExpenses(user.id)
 
-    await refreshCurrentView()
+    currentDashboardDate.setDate(1); 
+    
+    currentDashboardDate.setMonth(currentDashboardDate.getMonth() + step);
+    
+    updateDateDisplay();
+    
+    const { data: { user } } = await supabaseClient.auth.getUser();
+    if(user) await processFixedExpenses(user.id);
+
+    await refreshCurrentView();
     setTimeout(() => { isLoading = false }, 300); 
 }
 
@@ -200,14 +220,16 @@ window.closeModal = () => window.hideModal('modal-overlay');
 
 async function fetchTransactions() {
     const { data: { user } } = await supabaseClient.auth.getUser()
-    updateGreeting(user.email);
-    updateAccountsWidget(user.id);
-    fetchGoals(user.id);
+    
+    // REMOVIDO: updateAccountsWidget(user.id);  <-- Vamos mover pro Promise.all
+    // REMOVIDO: fetchGoals(user.id);            <-- Já está no Promise.all (estava duplicado)
 
+    // ... O RESTO DO CÓDIGO CONTINUA IGUAL ...
+    // (Atualiza saldo, renderiza lista, renderiza gráficos, etc)
     const year = currentDashboardDate.getFullYear(), month = currentDashboardDate.getMonth()
     const start = new Date(year, month, 1).toISOString()
     const end = new Date(year, month + 1, 0).toISOString()
-
+    
     const { data: trans } = await supabaseClient
         .from('transactions')
         .select(`*, categories (name)`)
@@ -218,19 +240,12 @@ async function fetchTransactions() {
     
     globalTransactions = trans || []
     
+    // ... continuação normal da função ...
+    // (Lógica de income, expense, chart rendering, etc)
     let income=0, expense=0, cats={}
-    
     globalTransactions.forEach(t => {
-        // --- MUDANÇA: MODO PREVISÃO ---
-        // Somamos tudo (pago ou não) para mostrar o potencial do mês
-        
-        if(t.type === 'income') {
-            income += t.amount
-        } else { 
-            expense += t.amount; 
-            const cName = t.categories?.name || 'Outros'; 
-            cats[cName] = (cats[cName] || 0) + t.amount 
-        }
+        if(t.type === 'income') { income += t.amount } 
+        else { expense += t.amount; const cName = t.categories?.name || 'Outros'; cats[cName] = (cats[cName] || 0) + t.amount }
     })
 
     if(document.getElementById('display-income')) document.getElementById('display-income').innerText = `R$ ${income.toLocaleString('pt-br',{minimumFractionDigits:2})}`
@@ -239,12 +254,8 @@ async function fetchTransactions() {
     const balance = income - expense;
     if(document.getElementById('display-balance')) {
         document.getElementById('display-balance').innerText = `R$ ${balance.toLocaleString('pt-br',{minimumFractionDigits:2})}`;
-        
-        // --- UX: MUDAR RÓTULO PARA EVITAR CONFUSÃO ---
-        // Acessa o elemento <small> dentro do card de saldo e muda o texto
         const labelSaldo = document.querySelector('#card-balance-bg small');
         if(labelSaldo) labelSaldo.innerText = "SALDO PREVISTO";
-
         const cardBg = document.getElementById('card-balance-bg');
         if(cardBg) {
             if(balance < 0) { cardBg.style.background = '#fef2f2'; cardBg.style.color = '#991b1b'; } 
@@ -910,37 +921,40 @@ async function loadCardOptions() {
     }
 }
 
+
 function setupEventListeners() {
     const payMethod = document.getElementById('transaction-payment-method');
     const cardContainer = document.getElementById('card-select-container');
     const installWrapper = document.getElementById('installments-wrapper');
-    const accountDiv = document.getElementById('account')?.parentElement; // O pai do select de conta
+    
+    // Pegamos o campo "Select" da conta e o campo do cartão
+    const accountSelect = document.getElementById('account'); 
+    const accountDiv = accountSelect?.parentElement; 
+    const cardSelect = document.getElementById('transaction-card-input');
 
     if(payMethod) {
         payMethod.addEventListener('change', (e) => {
-            const method = e.target.value;
-            
-            if(method === 'credit_card') {
-                // SE FOR CARTÃO DE CRÉDITO:
-                // 1. Mostra o select de cartões
-                cardContainer.classList.remove('hidden');
-                // 2. Mostra a opção de parcelar
-                installWrapper.classList.remove('hidden');
-                // 3. Esconde a seleção de Conta/Carteira (pois vai sair do limite do cartão)
+            if(e.target.value === 'credit_card') {
+                // Modo Cartão: Mostra cartão, esconde conta
+                if(cardContainer) cardContainer.classList.remove('hidden');
+                if(installWrapper) installWrapper.classList.remove('hidden');
                 if(accountDiv) accountDiv.classList.add('hidden');
                 
-                // Carrega a lista de cartões atualizada
+                // CORREÇÃO: Tira a obrigatoriedade da Conta e coloca no Cartão
+                if(accountSelect) accountSelect.removeAttribute('required');
+                if(cardSelect) cardSelect.setAttribute('required', 'true');
+
                 loadCardOptions();
             } else {
-                // SE FOR DÉBITO/DINHEIRO:
-                // 1. Esconde cartões
-                cardContainer.classList.add('hidden');
-                // 2. Esconde parcelamento
-                installWrapper.classList.add('hidden');
-                // 3. Mostra a conta de onde vai sair o dinheiro
+                // Modo Normal: Mostra conta, esconde cartão
+                if(cardContainer) cardContainer.classList.add('hidden');
+                if(installWrapper) installWrapper.classList.add('hidden');
                 if(accountDiv) accountDiv.classList.remove('hidden');
                 
-                // Reseta checkboxes de parcela
+                // CORREÇÃO: Devolve a obrigatoriedade para a Conta
+                if(accountSelect) accountSelect.setAttribute('required', 'true');
+                if(cardSelect) cardSelect.removeAttribute('required');
+
                 document.getElementById('check-installments').checked = false;
                 toggleInstallmentInput();
             }
@@ -980,35 +994,26 @@ function renderExpenseChart(cats) {
             datasets: [{ 
                 data: Object.values(cats), 
                 backgroundColor: ['#f43f5e', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6'], 
-                borderWidth: 0, // Remove a borda branca para ficar mais clean
-                hoverOffset: 4  // Efeito ao passar o mouse
+                borderWidth: 0, 
+                hoverOffset: 4 
             }] 
         }, 
         options: { 
             responsive: true, 
             maintainAspectRatio: false, 
-            cutout: '75%', // Deixa a rosca um pouco mais fina e elegante
+            cutout: '75%', 
+            // --- ATUALIZAÇÃO: Deixa a troca de mês instantânea ---
+            animation: {
+                duration: 0 
+            },
+            // ----------------------------------------------------
             layout: {
-                // AQUI ESTÁ A CORREÇÃO: Margem interna para não cortar
-                padding: {
-                    top: 10,
-                    bottom: 20, // Mais espaço embaixo
-                    left: 10,
-                    right: 10
-                }
+                padding: { top: 10, bottom: 20, left: 10, right: 10 }
             },
             plugins: { 
                 legend: { 
                     position: 'right', 
-                    labels: { 
-                        boxWidth: 12, 
-                        usePointStyle: true, 
-                        color: textColor,
-                        padding: 15, // Espaço vertical entre os itens da legenda
-                        font: {
-                            size: 11
-                        }
-                    } 
+                    labels: { boxWidth: 12, usePointStyle: true, color: textColor, padding: 15, font: { size: 11 } } 
                 },
                 tooltip: {
                     backgroundColor: isDark ? '#1e293b' : '#ffffff',
