@@ -144,3 +144,22 @@ npm test               # testes
 - Nomes de rota e coluna em `snake_case`; variáveis TS em `camelCase`.
   A conversão acontece na camada de repositório.
 - Comentário explica *por quê*, não *o quê*.
+- **Todo arquivo em LF e UTF-8 sem BOM.** Garantido por `.gitattributes`
+  (`* text=auto eol=lf`) + `core.autocrlf false` neste repo. Se um arquivo
+  aparecer com CR no meio (`git diff` mostrando a linha inteira como
+  alterada, ou checksum de migration batendo errado só no Windows), o
+  arquivo não foi reescrito a partir do blob normalizado — resolva com
+  `git checkout HEAD -- <arquivo>` (às vezes precisa apagar o arquivo
+  antes: `rm <arquivo> && git checkout HEAD -- <arquivo>`, porque o
+  checkout comum pode pular arquivos que o git já considera "iguais").
+- **Checksum de migration é calculado sobre conteúdo normalizado**, não
+  sobre os bytes crus do arquivo (`scripts/migrate.ts`, `normalizeForChecksum`):
+  remove BOM e converte `\r\n`/`\r` para `\n` antes do SHA-256. Isso separa
+  duas coisas que pareciam a mesma: "o arquivo mudou de verdade" vs. "o
+  arquivo tem final de linha diferente". Só a primeira deve travar o
+  runner.
+- **Nunca crie ou edite arquivo de código por redirecionamento no
+  PowerShell** (`echo`, `Add-Content`, `>`, `>>`, here-string sem
+  `-Encoding utf8`). Por padrão eles gravam em UTF-16 ou na codepage do
+  sistema, corrompendo o arquivo — já aconteceu neste projeto e custou uma
+  hora de investigação. Use o editor/ferramenta de escrita de arquivo.

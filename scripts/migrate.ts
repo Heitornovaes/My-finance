@@ -44,8 +44,17 @@ function versionOf(file: string): string {
   return file.replace(/\.sql$/, '');
 }
 
+// O arquivo no disco não muda — só o que entra no hash. Sem isso, o mesmo
+// commit gera checksums diferentes em Windows/Linux/CI (CRLF vs LF) ou se
+// algum editor grava BOM, e o runner recusaria migrations que na prática
+// não foram alteradas.
+function normalizeForChecksum(content: string): string {
+  const withoutBom = content.charCodeAt(0) === 0xfeff ? content.slice(1) : content;
+  return withoutBom.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+}
+
 function checksumOf(sql: string): string {
-  return createHash('sha256').update(sql).digest('hex');
+  return createHash('sha256').update(normalizeForChecksum(sql)).digest('hex');
 }
 
 // version -> checksum com que foi aplicada.
