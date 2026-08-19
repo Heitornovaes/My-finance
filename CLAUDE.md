@@ -112,6 +112,20 @@ mas não instale.
 - **Limite disponível** = limite − soma das faturas com status ≠ `'paid'`.
   Pagou a fatura, o limite volta.
 
+- **Pagamento de fatura é TRANSFERÊNCIA, não despesa nova.** A compra no
+  cartão já contou como despesa no mês da compra (via `card_invoice_id`).
+  A transação que paga a fatura (`pays_invoice_id` preenchido) move o
+  dinheiro da conta pra fora, mas **não é um segundo gasto** — contá-la de
+  novo numa soma de despesas do mês duplica o valor. **Toda agregação de
+  despesa/receita por competência deve usar a view `monthly_summary`
+  (migration 002) ou repetir o filtro `WHERE pays_invoice_id IS NULL`.**
+  Nunca somar `transactions` por `competence_date` sem esse filtro.
+
+- **Compra no cartão não tem `paid_at` próprio.** Quem é paga é a fatura
+  inteira (`card_invoices.status`/`paid_at`), nunca a compra individual.
+  `transactions.credit_card_id IS NOT NULL` implica `paid_at IS NULL`
+  — garantido pela constraint `tx_card_has_no_paid_at` (migration 002).
+
 ## Erros conhecidos do sistema antigo (não repetir)
 
 O `app.js` legado tem estes bugs. Estão documentados aqui para você não

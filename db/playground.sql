@@ -341,6 +341,45 @@ GROUP BY kind;
 
 
 -- =============================================================================
+-- PARTE 7 — Semântica de pagamento de fatura (migration 002)
+-- =============================================================================
+
+-- (15) Compra no cartão com paid_at preenchido. Quem é paga é a fatura
+--      inteira, nunca a compra individual.
+--      Espera: tx_card_has_no_paid_at
+INSERT INTO transactions
+    (user_id, kind, description, amount_cents, competence_date, paid_at,
+     credit_card_id, card_invoice_id)
+VALUES
+    ('11111111-1111-1111-1111-111111111111',
+     'expense', 'Compra com paid_at indevido', 5000, '2026-08-10', '2026-08-10',
+     '33333333-3333-3333-3333-333333333333',
+     '44444444-4444-4444-4444-444444444444');
+
+
+-- monthly_summary de setembro/2026 não deve incluir o pagamento da fatura
+-- (10000, Parte 5) — só a parcela 2/3 do Tênis (3333), que é compra real
+-- no cartão daquele mês.
+SELECT month, kind, total_cents, pending_count
+FROM monthly_summary
+WHERE user_id = '11111111-1111-1111-1111-111111111111'
+  AND month = '2026-09-01'
+  AND kind = 'expense';
+-- total_cents esperado: 3333 (não 13333)
+
+-- Prova por contraste: somando transactions "cru", sem excluir
+-- pays_invoice_id, o pagamento da fatura entraria junto e duplicaria
+-- o valor já contado como despesa no mês da compra.
+SELECT SUM(amount_cents) AS total_sem_filtro
+FROM transactions
+WHERE user_id = '11111111-1111-1111-1111-111111111111'
+  AND kind = 'expense'
+  AND competence_date >= '2026-09-01' AND competence_date < '2026-10-01';
+-- 13333 = 3333 (parcela) + 10000 (pagamento da fatura) — a diferença
+-- que monthly_summary existe para corrigir.
+
+
+-- =============================================================================
 -- LIMPEZA
 -- =============================================================================
 -- DELETE FROM users WHERE email = 'teste@exemplo.com';
