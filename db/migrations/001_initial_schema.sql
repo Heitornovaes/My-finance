@@ -565,5 +565,3 @@ INSERT INTO categories (user_id, name, icon, kind) VALUES
     (NULL, 'Freelance',      'fa-laptop-code',      'income'),
     (NULL, 'Rendimentos',    'fa-chart-line',       'income'),
     (NULL, 'Outros',         'fa-tag',              'income');
-- -   t e s t e  
- 
