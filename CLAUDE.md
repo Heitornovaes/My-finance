@@ -126,6 +126,26 @@ mas não instale.
   `transactions.credit_card_id IS NOT NULL` implica `paid_at IS NULL`
   — garantido pela constraint `tx_card_has_no_paid_at` (migration 002).
 
+- **Nome de conta é único por (usuário, `kind`), não só por usuário.**
+  Uma conta corrente "BB" e um investimento "BB" são entidades diferentes
+  e podem coexistir — `accounts_user_name_uniq` é
+  `(user_id, lower(name), kind)` (migration 004). Achado real na
+  importação do dump antigo (Fase 2, usuário 10a456a4).
+
+- **`day_of_month` (`recurring_rules`) e `due_day` (`credit_cards`)
+  aceitam 1-31**, não 1-28 — vencimento/dia fixo em 29, 30 ou 31 é
+  legítimo (ex.: cartão com vencimento dia 30, migration 003). Quando o
+  dia não existir no mês alvo (dia 31 em fevereiro, dia 30 em fevereiro),
+  quem gera a data usa o **último dia daquele mês**, nunca estoura pro
+  mês seguinte. Vale tanto para `due_date` de fatura quanto para a
+  materialização de ocorrência de recorrência na **Fase 6c** — nenhum dos
+  dois casos tem CHECK no banco pra isso porque a validade do dia depende
+  do mês, então é responsabilidade de quem gera a data (script de
+  importação hoje; rota de faturas e de recorrência depois).
+  `closing_day` continua 1-28: ele decide o MÊS da fatura
+  (`card_invoice_month`), e um fechamento em dia inexistente mudaria de
+  mês sozinho — por isso não foi relaxado junto.
+
 ## Erros conhecidos do sistema antigo (não repetir)
 
 O `app.js` legado tem estes bugs. Estão documentados aqui para você não
